@@ -10,11 +10,15 @@ class CompareView extends StatefulWidget {
     required this.replacement,
     required this.aspectRatio,
     this.initialSplit = 0.0,
+    this.overlay,
   });
 
   final ImageProvider original;
   final ImageProvider replacement;
   final double aspectRatio;
+
+  /// Drawn over the survey image only (clipped to the right of the divider), e.g. markers.
+  final Widget? overlay;
 
   /// 0 = only the replacement visible, 1 = only the original.
   final double initialSplit;
@@ -44,6 +48,8 @@ class CompareViewState extends State<CompareView> {
                 clipper: _LeftClipper(x),
                 child: Image(image: widget.original, fit: BoxFit.fill),
               ),
+              if (widget.overlay != null && split < 1)
+                ClipRect(clipper: _RightClipper(x), child: widget.overlay),
               if (split > 0 && split < 1)
                 Positioned(
                   left: x - 1,
@@ -79,4 +85,16 @@ class _LeftClipper extends CustomClipper<Rect> {
 
   @override
   bool shouldReclip(_LeftClipper old) => old.width != width;
+}
+
+class _RightClipper extends CustomClipper<Rect> {
+  _RightClipper(this.left);
+
+  final double left;
+
+  @override
+  Rect getClip(Size size) => Rect.fromLTRB(left, 0, size.width, size.height);
+
+  @override
+  bool shouldReclip(_RightClipper old) => old.left != left;
 }

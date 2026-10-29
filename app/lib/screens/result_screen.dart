@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models.dart';
 import '../state.dart';
 import '../widgets/compare_view.dart';
+import '../widgets/landmark_overlay.dart';
 import '../widgets/provider_picker.dart';
 import '../widgets/result_widgets.dart';
+import 'landmark_detail_screen.dart';
 
 class ResultScreen extends ConsumerStatefulWidget {
   const ResultScreen({super.key});
@@ -16,6 +19,13 @@ class ResultScreen extends ConsumerStatefulWidget {
 class _ResultScreenState extends ConsumerState<ResultScreen> {
   final _compareKey = GlobalKey<CompareViewState>();
   double _split = 0; // 0 = survey image, 1 = original photo
+  bool _showMarkers = true;
+
+  void _openLandmark(Landmark lm, String? providerKey) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => LandmarkDetailScreen(landmark: lm, providerKey: providerKey),
+    ));
+  }
 
   void _setSplit(double v) {
     setState(() => _split = v);
@@ -35,6 +45,18 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
           backgroundColor: Colors.black,
           title: const Text('Your sky'),
           actions: [
+            if (s.skyImage != null && (s.landmarks?.landmarks.isNotEmpty ?? false))
+              IconButton(
+                tooltip: _showMarkers ? 'Hide landmarks' : 'Show landmarks',
+                icon: Icon(_showMarkers ? Icons.location_on : Icons.location_off_outlined),
+                onPressed: () => setState(() => _showMarkers = !_showMarkers),
+              ),
+            if (s.solve != null)
+              IconButton(
+                tooltip: 'Details',
+                icon: const Icon(Icons.info_outline),
+                onPressed: () => _showDetails(s),
+              ),
             if (s.solve != null)
               IconButton(
                 tooltip: 'Image source',
@@ -60,19 +82,26 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     final aspect = photo.width / photo.height;
     final original = MemoryImage(photo.jpeg);
 
-    return Column(children: [
+    final chips = [
       if (s.solve?.approximate ?? false)
-        Notice(
+        NoticeChip(
           icon: Icons.gps_not_fixed,
           color: Colors.amber,
-          text: 'Approximate position. ${s.solve!.message}',
+          label: 'Approximate position',
+          details: 'Approximate position. ${s.solve!.message}',
         ),
       if (s.skyImage?.fallbackUsed ?? false)
-        Notice(
+        NoticeChip(
           icon: Icons.swap_horiz,
           color: Colors.lightBlueAccent,
-          text: s.skyImage!.fallbackMessage ?? 'Showing a different image source.',
+          label: s.skyImage!.providerName.isNotEmpty
+              ? 'Showing ${s.skyImage!.providerName}'
+              : 'Different image source',
+          details: s.skyImage!.fallbackMessage ?? 'Showing a different image source.',
         ),
+    ];
+
+    return Column(children: [
       if (s.imageError != null)
         Notice(
           icon: Icons.cloud_off,
@@ -90,6 +119,12 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
               replacement: MemoryImage(s.skyImage!.bytes),
               aspectRatio: aspect,
               initialSplit: _split,
+              overlay: _showMarkers && s.landmarks != null && !s.busy
+                  ? LandmarkOverlay(
+                      landmarks: s.landmarks!.landmarks,
+                      onTap: (lm) => _openLandmark(lm, s.skyImage!.providerKey),
+                    )
+                  : null,
             )
           else
             Center(
@@ -105,13 +140,41 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                   Stage.fetchingImage => 'Fetching the survey image…',
                   _ => 'Preparing photo…',
                 },
+                onCancel: s.stage == Stage.fetchingImage ? session.cancelImage : null,
               ),
+            ),
+          if (chips.isNotEmpty && !s.busy)
+            Positioned(
+              top: 8,
+              left: 8,
+              right: 8,
+              child: Wrap(spacing: 6, runSpacing: 6, children: chips),
             ),
         ]),
       ),
       if (s.skyImage != null) _compareSlider(),
-      if (s.solve != null) InfoBar(solve: s.solve!, image: s.skyImage),
     ]);
+  }
+
+  /// Coordinates, solve source and image credit, opened from the ⓘ button.
+  void _showDetails(SessionState s) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text('Details', style: Theme.of(context).textTheme.titleMedium),
+            ),
+            InfoBar(solve: s.solve!, image: s.skyImage),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _compareSlider() {

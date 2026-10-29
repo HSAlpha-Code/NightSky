@@ -48,6 +48,7 @@ class ApiClient {
     required String? providerKey,
     required int width,
     required int height,
+    CancelToken? cancelToken,
   }) =>
       _guard(() async {
         final resp = await _dio.post<List<int>>(
@@ -62,6 +63,7 @@ class ApiClient {
             if (providerKey != null) 'provider': providerKey,
           },
           options: Options(responseType: ResponseType.bytes),
+          cancelToken: cancelToken,
         );
         final h = resp.headers;
         return SkyImage(
@@ -72,6 +74,47 @@ class ApiClient {
           fallbackUsed: h.value('x-fallback-used') == 'true',
           fallbackReason: h.value('x-fallback-reason'),
           fallbackMessage: h.value('x-fallback-message'),
+        );
+      });
+
+  /// Markers for the field. [aspect] = image height / width.
+  Future<LandmarkField> landmarks(SolveResult pointing,
+          {required double aspect, CancelToken? cancelToken}) =>
+      _guard(() async {
+        final resp = await _dio.get<Map<String, dynamic>>('/landmarks',
+            queryParameters: {
+              'ra': pointing.ra,
+              'dec': pointing.dec,
+              'fov': pointing.fov,
+              'rotation': pointing.rotation,
+              'aspect': aspect,
+            },
+            cancelToken: cancelToken);
+        return LandmarkField.fromJson(resp.data!);
+      });
+
+  /// [view]: "auto" (best available), "jwst", "hst" or "survey".
+  Future<LandmarkDetail> landmarkDetail(String id,
+          {String? providerKey, String view = 'auto', CancelToken? cancelToken}) =>
+      _guard(() async {
+        final resp = await _dio.get<Map<String, dynamic>>(
+          '/landmark-detail',
+          queryParameters: {
+            'id': id,
+            'view': view,
+            if (providerKey != null) 'provider': providerKey,
+          },
+          // Stitching a Hubble/Webb mosaic the first time can take a minute.
+          options: Options(receiveTimeout: const Duration(seconds: 150)),
+          cancelToken: cancelToken,
+        );
+        final j = resp.data!;
+        return LandmarkDetail(
+          image: base64Decode(j['image_jpeg_base64'] as String),
+          imageSource: (j['image_source'] ?? '') as String,
+          credit: (j['credit'] ?? '') as String,
+          caption: (j['caption'] ?? '') as String,
+          fovDeg: (j['fov'] as num?)?.toDouble(),
         );
       });
 
@@ -87,6 +130,8 @@ class ApiClient {
 /// Map a dio error to a user-facing [ApiException].
 ApiException toApiException(DioException e) {
   switch (e.type) {
+    case DioExceptionType.cancel:
+      return const ApiException('CANCELLED', 'Cancelled.');
     case DioExceptionType.connectionTimeout:
     case DioExceptionType.connectionError:
       return const ApiException('NETWORK',

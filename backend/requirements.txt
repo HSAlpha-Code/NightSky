@@ -1,12 +1,15 @@
+# Runtime dependencies (also what Vercel installs, ~320 MB of its 500 MB Python limit).
+# Tested with: Django 6.1, DRF 3.18, astropy 8.0, numpy 2.5, scipy 1.18, Pillow 13.
+# Self-hosting extras (gunicorn): requirements-dev.txt.
 Django>=5.0
 djangorestframework>=3.15
 django-cors-headers>=4.3
 astropy>=6.0
-astroquery>=0.4.7
+astropy-healpix>=1.0
 httpx>=0.27
 pygeomag>=1.1
 numpy>=1.26
 Pillow>=10.0
 scipy>=1.11
+# Plate solver, ~50 MB including its star database (needs only numpy/Pillow/scipy).
 tetra3 @ git+https://github.com/esa/tetra3.git
-gunicorn>=22.0

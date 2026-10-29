@@ -17,14 +17,27 @@ class ExternalServiceError(Exception):
 
 def http_get(url: str, params: dict | None = None, timeout: float | None = None,
              retries: int | None = None) -> httpx.Response:
+    return _with_retries("GET", url, lambda limits: httpx.get(
+        url, params=params, timeout=limits, follow_redirects=True,
+        headers={"User-Agent": USER_AGENT}), timeout, retries)
+
+
+def http_post(url: str, data: dict | None = None, timeout: float | None = None,
+              retries: int | None = None) -> httpx.Response:
+    """Form-encoded POST with the same timeouts and retries as http_get."""
+    return _with_retries("POST", url, lambda limits: httpx.post(
+        url, data=data, timeout=limits, follow_redirects=True,
+        headers={"User-Agent": USER_AGENT}), timeout, retries)
+
+
+def _with_retries(method, url, send, timeout, retries) -> httpx.Response:
     timeout = timeout if timeout is not None else settings.HTTP_TIMEOUT_SECONDS
     retries = retries if retries is not None else settings.HTTP_RETRIES
     limits = httpx.Timeout(timeout, connect=min(timeout, settings.HTTP_CONNECT_TIMEOUT_SECONDS))
     last_error: Exception | None = None
     for attempt in range(retries + 1):
         try:
-            resp = httpx.get(url, params=params, timeout=limits, follow_redirects=True,
-                             headers={"User-Agent": USER_AGENT})
+            resp = send(limits)
             if resp.status_code in RETRY_STATUS:
                 last_error = ExternalServiceError(f"HTTP {resp.status_code} from {url}")
             else:
@@ -36,6 +49,6 @@ def http_get(url: str, params: dict | None = None, timeout: float | None = None,
             last_error = exc
         if attempt < retries:
             delay = 1.5 * (2 ** attempt)
-            log.warning("GET %s failed (%s), retrying in %.1fs", url, last_error, delay)
+            log.warning("%s %s failed (%s), retrying in %.1fs", method, url, last_error, delay)
             time.sleep(delay)
-    raise ExternalServiceError(f"GET {url} failed: {last_error}") from last_error
+    raise ExternalServiceError(f"{method} {url} failed: {last_error}") from last_error

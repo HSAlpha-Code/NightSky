@@ -3,6 +3,8 @@ backend/.env
 backend/db.sqlite3
 backend/.cache/
 backend/samples/
+backend/data/*
+!backend/data/catalogs/
 __pycache__/
 *.pyc
 app/build/
@@ -10,3 +12,8 @@ app/.dart_tool/
 app/.flutter-plugins-dependencies
 app/android/local.properties
 app/android/.gradle/
+# Android release signing (keep a private backup, never commit)
+app/android/key.properties
+app/android/*.jks
+backend/staticfiles/
+.vercel/

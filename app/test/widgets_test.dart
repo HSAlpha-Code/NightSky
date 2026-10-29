@@ -1,14 +1,19 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:night_sky/api_client.dart';
 import 'package:night_sky/models.dart';
+import 'package:night_sky/screens/landmark_detail_screen.dart';
 import 'package:night_sky/screens/result_screen.dart';
 import 'package:night_sky/state.dart';
 import 'package:night_sky/widgets/compare_view.dart';
+import 'package:night_sky/widgets/landmark_overlay.dart';
 import 'package:night_sky/widgets/provider_picker.dart';
 
 import 'fake_backend.dart';
@@ -90,15 +95,158 @@ void main() {
         .start(png, CaptureMetadata(timestampUtc: DateTime.utc(2026))));
     await tester.pump();
 
-    expect(find.textContaining('Approximate position'), findsOneWidget);
+    // Notices are compact chips over the image; tapping one shows the full text.
+    expect(find.text('Approximate position'), findsOneWidget);
+    expect(find.text('Different image source'), findsOneWidget);
+    await tester.tap(find.text('Different image source'));
+    await tester.pump();
     expect(find.text('DSS2 is down; showing Mellinger instead.'), findsOneWidget);
     expect(find.byKey(const Key('compare-slider')), findsOneWidget);
-    expect(find.textContaining('NASA SkyView'), findsOneWidget);
-    expect(find.textContaining('05h 35m 17s'), findsOneWidget);
 
     await tester.tap(find.text('My photo'));
     await tester.pump();
     expect(tester.widget<Slider>(find.byKey(const Key('compare-slider'))).value, 1);
+
+    // Coordinates and credit are hidden behind the ⓘ button.
+    expect(find.textContaining('05h 35m 17s'), findsNothing);
+    await tester.tap(find.byTooltip('Details'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('NASA SkyView'), findsOneWidget);
+    expect(find.textContaining('05h 35m 17s'), findsOneWidget);
+  });
+
+  testWidgets('"Fetching the survey image" shows Cancel, which stops the wait', (tester) async {
+    final backend = FakeBackend()
+      ..json('POST /api/solve', solveJson)
+      ..hang('POST /api/sky-image');
+    final container = ProviderContainer(overrides: [
+      apiClientProvider.overrideWithValue(ApiClient('http://test', dio: fakeDio(backend))),
+    ]);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(home: ResultScreen()),
+    ));
+    final session = container.read(sessionProvider.notifier);
+    await tester.runAsync(() async {
+      unawaited(session.start(png, CaptureMetadata(timestampUtc: DateTime.utc(2026))));
+      while (container.read(sessionProvider).stage != Stage.fetchingImage) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    });
+    await tester.pump();
+    expect(find.text('Fetching the survey image…'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Cancel'));
+    await tester.pump();
+    expect(find.text('Fetching the survey image…'), findsNothing);
+    expect(find.textContaining('Survey image cancelled.'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+  });
+
+  testWidgets('landmark markers: styles, tap opens the detail view with credit',
+      (tester) async {
+    final jpeg = Uint8List.fromList(img.encodeJpg(img.Image(width: 8, height: 8)));
+    final backend = FakeBackend()
+      ..json('POST /api/solve', solveJson)
+      ..image('POST /api/sky-image', png, {'X-Provider': 'dss2_color', 'X-Credit': 'DSS2'})
+      ..json('GET /api/landmarks', landmarksJson())
+      ..json('GET /api/providers', providersJson);
+    backend.handlers['GET /api/landmark-detail'] = (o) {
+      final survey = o.queryParameters['view'] == 'survey';
+      return ResponseBody.fromString(
+          jsonEncode({
+            'landmark': {},
+            'view': o.queryParameters['view'],
+            'image_source': survey ? 'survey' : 'jwst',
+            'credit': survey
+                ? 'Pan-STARRS1 via STScI'
+                : 'James Webb Space Telescope (NASA/ESA/CSA) via ESA ESASky HiPS',
+            'caption': survey ? 'Pan-STARRS · 9′ field' : 'JWST NIRCam · 40% of the field imaged',
+            'fov': 0.2,
+            'image_jpeg_base64': base64Encode(jpeg),
+          }),
+          200,
+          headers: {
+            Headers.contentTypeHeader: ['application/json']
+          });
+    };
+    final container = ProviderContainer(overrides: [
+      apiClientProvider.overrideWithValue(ApiClient('http://test', dio: fakeDio(backend))),
+    ]);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(home: ResultScreen()),
+    ));
+    await tester.runAsync(() async {
+      await container
+          .read(sessionProvider.notifier)
+          .start(png, CaptureMetadata(timestampUtc: DateTime.utc(2026)));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await tester.pump();
+
+    expect(find.byType(LandmarkMarker), findsNWidgets(2));
+    expect(find.byIcon(Icons.auto_awesome), findsOneWidget); // M42 has a Webb/Hubble image
+    expect(find.byTooltip('Hide landmarks'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Great Orion Nebula'));
+    await tester.pumpAndSettle(); // route transition; the detail request starts
+    // The (fake) HTTP call and base64 decode complete on the real event loop.
+    for (var i = 0; i < 20 && find.byType(InteractiveViewer).evaluate().isEmpty; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
+    // The detail list scrolls: facts and credit sit below the square image in a 800x600 test view.
+    await tester.drag(find.byType(ListView).first, const Offset(0, -600));
+    await tester.pump();
+    expect(find.text('Great Orion Nebula'), findsOneWidget); // app bar of the detail view
+    expect(find.text('James Webb Space Telescope mosaic'), findsOneWidget);
+    expect(find.textContaining('ESA ESASky'), findsOneWidget);
+    expect(find.text('Star cluster with nebula'), findsOneWidget);
+    expect(find.text('M42, NGC 1976'), findsOneWidget);
+    Map<String, dynamic> lastDetailQuery() =>
+        backend.requests.lastWhere((r) => r.path == '/landmark-detail').queryParameters;
+    expect(lastDetailQuery(), {'id': 'NGC1976', 'view': 'auto', 'provider': 'dss2_color'});
+
+    // Point-of-view chips: Best, Webb, Hubble + one per survey from /providers.
+    await tester.drag(find.byType(ListView).first, const Offset(0, 800)); // back to top
+    await tester.pump();
+    for (final label in ['Best', 'Webb', 'Hubble', 'DSS2 Color', 'Pan-STARRS DR2 (STScI)']) {
+      expect(find.widgetWithText(ChoiceChip, label), findsOneWidget, reason: label);
+    }
+    final panstarrs = find.widgetWithText(ChoiceChip, 'Pan-STARRS DR2 (STScI)');
+    await tester.ensureVisible(panstarrs); // chip row scrolls horizontally
+    await tester.pumpAndSettle();
+    await tester.tap(panstarrs);
+    expect(tester.widget<ChoiceChip>(panstarrs).selected, isFalse); // not until rebuilt
+    await tester.pump();
+    expect(tester.widget<ChoiceChip>(panstarrs).selected, isTrue);
+    // Dio dispatches on a timer (fake clock) and decodes on the real event loop: drive both.
+    for (var i = 0; i < 30 && find.byType(InteractiveViewer).evaluate().isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    }
+    expect(lastDetailQuery(), {'id': 'NGC1976', 'view': 'survey', 'provider': 'panstarrs'});
+    await tester.drag(find.byType(ListView).first, const Offset(0, -600)); // credit is below
+    await tester.pump();
+    expect(find.text('Survey close-up'), findsOneWidget);
+    expect(find.textContaining('Pan-STARRS1 via STScI'), findsOneWidget);
+
+    // Back on the result screen, markers can be hidden.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Hide landmarks'));
+    await tester.pump();
+    expect(find.byType(LandmarkMarker), findsNothing);
+  });
+
+  test('formatDistance', () {
+    expect(formatDistance(440), '440 light-years');
+    expect(formatDistance(1344), '1344 light-years');
+    expect(formatDistance(25000), '25 thousand light-years');
+    expect(formatDistance(2.5e6), '2.5 million light-years');
   });
 
   testWidgets('solve failure shows a friendly error with "Take another"', (tester) async {

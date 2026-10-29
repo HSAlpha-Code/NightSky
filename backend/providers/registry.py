@@ -6,13 +6,18 @@ from .hips2fits import Hips2FitsProvider
 from .panstarrs import PanStarrsProvider
 from .skyview import SkyViewProvider
 
+MIRROR = settings.HIPS_MIRROR_URL.rstrip("/")  # ESA ESASky copy of the CDS surveys ("" = off)
+
 PROVIDERS: list[ImageProvider] = [
     Hips2FitsProvider("dss2_color", "CDS/P/DSS2/color", "DSS2 Color",
-                      "Digitized Sky Survey 2, colour composite of photographic plates.", "optical"),
+                      "Digitized Sky Survey 2, colour composite of photographic plates.", "optical",
+                      mirror=MIRROR and f"{MIRROR}/DSSColor"),
     Hips2FitsProvider("2mass_color", "CDS/P/2MASS/color", "2MASS Color",
-                      "Two Micron All Sky Survey, J/H/K colour composite.", "near-infrared"),
+                      "Two Micron All Sky Survey, J/H/K colour composite.", "near-infrared",
+                      mirror=MIRROR and f"{MIRROR}/2MASSColor"),
     Hips2FitsProvider("allwise_color", "CDS/P/allWISE/color", "AllWISE Color",
-                      "WISE mid-infrared colour composite (W1/W2/W4).", "mid-infrared"),
+                      "WISE mid-infrared colour composite (W1/W2/W4).", "mid-infrared",
+                      mirror=MIRROR and f"{MIRROR}/AllWISEColor", mirror_max_order=8),
     Hips2FitsProvider("panstarrs_hips", "CDS/P/PanSTARRS/DR1/color-z-zg-g", "Pan-STARRS DR1 (HiPS)",
                       "Pan-STARRS DR1 colour composite via hips2fits.", "optical",
                       coverage="dec > -30", min_dec=-30.0),

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -74,6 +75,65 @@ void main() {
     expect(container.read(selectedProviderProvider), 'panstarrs');
     expect((backend.requests.last.data as Map)['provider'], 'panstarrs');
     expect(backend.requests.where((r) => r.path == '/solve').length, 1);
+  });
+
+  test('cancel stops waiting for the survey image and keeps the photo', () async {
+    backend.json('POST /api/solve', solveJson);
+    backend.hang('POST /api/sky-image');
+    final run = session().start(photo, meta);
+    // Wait until the image request is in flight.
+    while (state().stage != Stage.fetchingImage) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    session().cancelImage();
+    await run;
+    expect(state().stage, Stage.done);
+    expect(state().solve, isNotNull);
+    expect(state().photo, isNotNull);
+    expect(state().skyImage, isNull);
+    expect(state().imageError!.code, 'CANCELLED');
+
+    // Retry after cancelling fetches the image again.
+    backend.hanging.clear();
+    backend.image('POST /api/sky-image', [9], {'X-Provider': 'dss2_color'});
+    await session().retry();
+    expect(state().skyImage!.bytes, [9]);
+    expect(state().imageError, isNull);
+  });
+
+  test('landmarks load with the sky image and re-poll while MAST is pending', () async {
+    SessionNotifier.landmarkPollInterval = const Duration(milliseconds: 10);
+    var calls = 0;
+    backend.json('POST /api/solve', solveJson);
+    backend.image('POST /api/sky-image', [1], {'X-Provider': 'dss2_color'});
+    backend.handlers['GET /api/landmarks'] = (_) {
+      calls++;
+      final body = landmarksJson(m42Hires: calls == 1 ? null : true, pending: calls == 1);
+      return ResponseBody.fromString(jsonEncode(body), 200, headers: {
+        Headers.contentTypeHeader: ['application/json']
+      });
+    };
+    await session().start(photo, meta);
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(calls, 2); // pending -> asked once more -> done
+    final m42 = state().landmarks!.landmarks.first;
+    expect(m42.hasHires, isTrue);
+    expect(state().landmarks!.pending, isFalse);
+    final q = backend.requests.lastWhere((r) => r.path == '/landmarks').queryParameters;
+    expect(q['aspect'], closeTo(4 / 3, 0.001)); // portrait photo: height / width
+  });
+
+  test('landmark failure does not break the result', () async {
+    backend.json('POST /api/solve', solveJson);
+    backend.image('POST /api/sky-image', [1], {});
+    backend.json('GET /api/landmarks',
+        {'error': {'code': 'CATALOG_UNAVAILABLE', 'message': 'x'}}, status: 503);
+    await session().start(photo, meta);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(state().stage, Stage.done);
+    expect(state().skyImage, isNotNull);
+    expect(state().landmarks!.landmarks, isEmpty);
   });
 
   test('reset clears the session', () async {

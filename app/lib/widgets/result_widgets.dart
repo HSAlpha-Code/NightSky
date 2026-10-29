@@ -70,10 +70,56 @@ class Notice extends StatelessWidget {
   }
 }
 
+/// Small pill drawn over the result image ("Approximate position", "Showing X").
+/// Tapping it shows the full explanation in a snack bar.
+class NoticeChip extends StatelessWidget {
+  const NoticeChip({
+    super.key,
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.details,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String label;
+  final String details;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.6),
+      shape: StadiumBorder(side: BorderSide(color: color.withValues(alpha: 0.7))),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: () => ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(details))),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 4, 10, 4),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, color: color, size: 14),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(label,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white)),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
 class ProgressMessage extends StatelessWidget {
-  const ProgressMessage({super.key, required this.text});
+  const ProgressMessage({super.key, required this.text, this.onCancel});
 
   final String text;
+
+  /// Shows a "Cancel" button when set.
+  final VoidCallback? onCancel;
 
   @override
   Widget build(BuildContext context) {
@@ -82,6 +128,14 @@ class ProgressMessage extends StatelessWidget {
         const CircularProgressIndicator(),
         const SizedBox(height: 16),
         Text(text, textAlign: TextAlign.center),
+        if (onCancel != null) ...[
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: onCancel,
+            icon: const Icon(Icons.close),
+            label: const Text('Cancel'),
+          ),
+        ],
       ]),
     );
   }

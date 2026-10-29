@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -26,11 +27,20 @@ class FakeBackend implements HttpClientAdapter {
     handlers[route] = (o) => throw DioException(requestOptions: o, type: type);
   }
 
+  /// Requests to [route] never answer (until cancelled), like a slow upstream service.
+  void hang(String route) => hanging.add(route);
+  final hanging = <String>{};
+
   @override
   Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? requestStream,
       Future<void>? cancelFuture) async {
     requests.add(options);
-    final handler = handlers['${options.method} ${options.uri.path}'];
+    final route = '${options.method} ${options.uri.path}';
+    if (hanging.contains(route)) {
+      await (cancelFuture ?? Completer<void>().future);
+      throw DioException.requestCancelled(requestOptions: options, reason: 'cancelled');
+    }
+    final handler = handlers[route];
     if (handler == null) return ResponseBody.fromString('not found', 404);
     return handler(options);
   }
@@ -67,6 +77,50 @@ const providersJson = {
     },
   ],
 };
+
+Map<String, dynamic> landmarksJson({bool? m42Hires = true, bool pending = false}) => {
+      'landmarks': [
+        {
+          'id': 'NGC1976',
+          'name': 'Great Orion Nebula',
+          'kind': 'dso',
+          'type': 'Cl+N',
+          'type_label': 'Star cluster with nebula',
+          'ra': 83.82,
+          'dec': -5.39,
+          'magnitude': 4.0,
+          'size_arcmin': 90.0,
+          'messier': 42,
+          'constellation': 'Ori',
+          'aliases': ['M42', 'NGC 1976'],
+          'distance_ly': null,
+          'x': 0.5,
+          'y': 0.5,
+          'has_hires': m42Hires,
+        },
+        {
+          'id': 'HIP26311',
+          'name': 'Alnilam',
+          'kind': 'star',
+          'type': 'star',
+          'type_label': 'Star',
+          'ra': 84.05,
+          'dec': -1.2,
+          'magnitude': 1.69,
+          'size_arcmin': null,
+          'messier': null,
+          'constellation': 'Ori',
+          'aliases': ['HR 1903'],
+          'distance_ly': null,
+          'x': 0.25,
+          'y': 0.2,
+          'has_hires': false,
+        },
+      ],
+      'total_in_field': 2,
+      'pending': pending,
+      'source': 'OpenNGC',
+    };
 
 const solveJson = {
   'ra': 83.82,

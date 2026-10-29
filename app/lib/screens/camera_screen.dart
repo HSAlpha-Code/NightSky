@@ -158,7 +158,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: const Text('Night Sky'),
+        title: const Text('NightSky'),
         actions: [
           IconButton(
             tooltip: 'Settings',

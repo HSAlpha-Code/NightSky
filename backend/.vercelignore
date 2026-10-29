@@ -1,0 +1,11 @@
+# Not needed at runtime; keeps the function bundle small (Python limit: 500 MB).
+.venv/
+.env
+db.sqlite3
+.cache/
+staticfiles/
+samples/
+__pycache__/
+*.pyc
+**/tests.py
+**/test_*.py

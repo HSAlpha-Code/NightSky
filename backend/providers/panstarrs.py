@@ -35,12 +35,12 @@ class PanStarrsProvider(ImageProvider):
         out_size = math.ceil(max(width_px, height_px) * math.hypot(1, height_px / width_px))
         try:
             listing = http_get(f"{settings.PANSTARRS_URL}/ps1filenames.py",
-                               params={"ra": ra, "dec": dec, "filters": "gri", "type": "stack"})
-            files = _parse_filenames(listing.text)
-            if not all(f in files for f in "gri"):
-                raise ProviderError("Pan-STARRS has no g/r/i stack at this position")
+                               params={"ra": ra, "dec": dec, "filters": "grizy", "type": "stack"})
+            channels = pick_channels(_parse_filenames(listing.text))
+            if not channels:
+                raise ProviderError("Pan-STARRS has no stack image at this position")
             resp = http_get(f"{settings.PANSTARRS_URL}/fitscut.cgi", params={
-                "red": files["i"], "green": files["r"], "blue": files["g"],
+                **channels,
                 "ra": ra, "dec": dec, "size": size, "output_size": min(out_size, 3000),
                 "format": "jpg", "autoscale": 99.5,
             })
@@ -50,6 +50,20 @@ class PanStarrsProvider(ImageProvider):
             raise ProviderError(f"Pan-STARRS returned non-image: {resp.text[:200]}")
         return _rotate_and_crop(resp.content, fov_deg, rotation_deg, width_px, height_px,
                                 source_fov_deg=size * PIXEL_ARCSEC / 3600)
+
+
+def pick_channels(files: dict[str, str]) -> dict[str, str]:
+    """fitscut red/green/blue params. Prefer i/r/g; some sky cells lack a filter (e.g. no r at
+    M42), so otherwise use the reddest, middle and bluest available; one filter = greyscale."""
+    if all(f in files for f in "irg"):
+        return {"red": files["i"], "green": files["r"], "blue": files["g"]}
+    available = [f for f in "yzirg" if f in files]          # red -> blue
+    if len(available) >= 3:
+        r, g, b = available[0], available[len(available) // 2], available[-1]
+        return {"red": files[r], "green": files[g], "blue": files[b]}
+    if available:
+        return {"red": files[available[0]]}
+    return {}
 
 
 def _parse_filenames(text: str) -> dict[str, str]:

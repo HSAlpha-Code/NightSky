@@ -18,6 +18,14 @@ def _load_dotenv(path: Path) -> None:
 
 _load_dotenv(BASE_DIR / ".env")
 
+# Vercel: everything except /tmp is read-only, so libraries that keep config/cache folders
+# in the home directory (astropy) must use /tmp.
+ON_VERCEL = bool(os.environ.get("VERCEL"))
+if ON_VERCEL:
+    os.environ["HOME"] = "/tmp"
+    os.environ.setdefault("XDG_CACHE_HOME", "/tmp/.cache")
+    os.environ.setdefault("XDG_CONFIG_HOME", "/tmp/.config")
+
 
 def env(key: str, default: str = "") -> str:
     return os.environ.get(key, default)
@@ -28,8 +36,20 @@ def env_bool(key: str, default: bool = False) -> bool:
 
 
 SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-insecure-key-change-me")
-DEBUG = env_bool("DJANGO_DEBUG", True)
+# Debug is on for local development and off on Vercel unless DJANGO_DEBUG says otherwise.
+DEBUG = env_bool("DJANGO_DEBUG", not ON_VERCEL)
 ALLOWED_HOSTS = [h.strip() for h in env("DJANGO_ALLOWED_HOSTS", "*").split(",") if h.strip()]
+if ON_VERCEL and not DEBUG and SECRET_KEY.startswith("dev-insecure"):
+    raise RuntimeError("Set the DJANGO_SECRET_KEY environment variable in Vercel.")
+if not DEBUG:
+    # HTTPS-only API. Vercel terminates TLS and redirects HTTP itself, so no SSL redirect here.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_HSTS_SECONDS = int(env("SECURE_HSTS_SECONDS", "31536000"))
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "DENY"
+    # The API is stateless (no cookies, sessions or forms), so CSRF/clickjacking middleware
+    # and an SSL redirect add nothing; these checks don't apply.
+    SILENCED_SYSTEM_CHECKS = ["security.W002", "security.W003", "security.W008"]
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
@@ -38,6 +58,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "providers",
     "solver",
+    "landmarks",
 ]
 
 MIDDLEWARE = [
@@ -59,6 +80,7 @@ DATABASES = {
 
 TEMPLATES = []
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"   # the API serves no static files; set for collectstatic
 USE_TZ = True
 TIME_ZONE = "UTC"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -109,10 +131,29 @@ HTTP_RETRIES = int(env("HTTP_RETRIES", "1"))
 
 DEFAULT_PROVIDER = env("DEFAULT_PROVIDER", "dss2_color")
 HIPS2FITS_URL = env("HIPS2FITS_URL", "https://alasky.cds.unistra.fr/hips-image-services/hips2fits")
+# Copies of DSS2/2MASS/AllWISE HiPS tiles outside CDS; rendered locally if hips2fits is unreachable.
+HIPS_MIRROR_URL = env("HIPS_MIRROR_URL", "https://skies.esac.esa.int")
 SKYVIEW_URL = env("SKYVIEW_URL", "https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl")
 PANSTARRS_URL = env("PANSTARRS_URL", "https://ps1images.stsci.edu/cgi-bin")
 # After a provider's service fails, skip it for this many seconds (avoids stacking timeouts).
 PROVIDER_DOWN_SECONDS = int(env("PROVIDER_DOWN_SECONDS", "120"))
+
+# --- Landmarks ---
+# OpenNGC (Messier/NGC/IC) + IAU star names, downloaded once into CATALOG_DIR.
+# (SIMBAD is not used: it's hosted by CDS, which some ISPs can't reach.)
+CATALOG_DIR = Path(env("CATALOG_DIR", str(BASE_DIR / "data" / "catalogs")))
+OPENNGC_URL = env("OPENNGC_URL",
+                  "https://raw.githubusercontent.com/mattiaverga/OpenNGC/master/database_files")
+IAU_STAR_NAMES_URL = env("IAU_STAR_NAMES_URL",
+                         "https://www.pas.rochester.edu/~emamajek/WGSN/IAU-CSN.txt")
+LANDMARK_MAX_MARKERS = int(env("LANDMARK_MAX_MARKERS", "20"))
+MAST_URL = env("MAST_URL", "https://mast.stsci.edu/api/v0/invoke")
+# MAST position searches take 10-35 s (busy fields like M42 the longest); they run in
+# background threads and are cached for 30 days, so only the first view of a field waits.
+MAST_TIMEOUT_SECONDS = float(env("MAST_TIMEOUT_SECONDS", "40"))
+MAST_WORKERS = int(env("MAST_WORKERS", "4"))
+# ESA ESASky HiPS: all public Hubble and JWST imaging, already stitched into sky tiles.
+ESASKY_HIPS_URL = env("ESASKY_HIPS_URL", "https://cdn.skies.esac.esa.int")
 
 PLATE_SOLVER = env("PLATE_SOLVER", "tetra3")
 TETRA3_DATABASE = env("TETRA3_DATABASE", "")

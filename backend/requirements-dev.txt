@@ -1,0 +1,4 @@
+# Local development / self-hosting on a normal server (not needed on Vercel):
+#   pip install -r requirements-dev.txt
+-r requirements.txt
+gunicorn>=22.0

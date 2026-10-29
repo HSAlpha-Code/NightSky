@@ -1,7 +1,8 @@
-from django.urls import path
+from django.urls import re_path
 
 from . import views
 
+# Trailing slash optional: "/api/solve" and "/api/solve/" both work.
 urlpatterns = [
-    path("solve", views.solve, name="solve"),
+    re_path(r"^solve/?$", views.solve, name="solve"),
 ]

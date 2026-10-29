@@ -100,6 +100,119 @@ class SkyImage {
   final String? fallbackMessage;
 }
 
+/// A notable object in the field, from `GET /api/landmarks`.
+class Landmark {
+  const Landmark({
+    required this.id,
+    required this.name,
+    required this.kind,
+    required this.typeLabel,
+    required this.x,
+    required this.y,
+    this.hasHires,
+    this.magnitude,
+    this.sizeArcmin,
+    this.messier,
+    this.constellation = '',
+    this.aliases = const [],
+    this.distanceLy,
+  });
+
+  final String id;
+  final String name;
+  final String kind; // "dso" | "star"
+  final String typeLabel;
+
+  /// Position in the survey image, 0..1 from the left / top edge.
+  final double x;
+  final double y;
+
+  /// true / false, or null while the backend is still asking MAST.
+  final bool? hasHires;
+  final double? magnitude;
+  final double? sizeArcmin;
+  final int? messier;
+  final String constellation;
+  final List<String> aliases;
+  final double? distanceLy;
+
+  bool get isStar => kind == 'star';
+
+  factory Landmark.fromJson(Map<String, dynamic> j) => Landmark(
+        id: j['id'] as String,
+        name: j['name'] as String,
+        kind: (j['kind'] ?? 'dso') as String,
+        typeLabel: (j['type_label'] ?? '') as String,
+        x: (j['x'] as num).toDouble(),
+        y: (j['y'] as num).toDouble(),
+        hasHires: j['has_hires'] as bool?,
+        magnitude: (j['magnitude'] as num?)?.toDouble(),
+        sizeArcmin: (j['size_arcmin'] as num?)?.toDouble(),
+        messier: j['messier'] as int?,
+        constellation: (j['constellation'] ?? '') as String,
+        aliases: [for (final a in (j['aliases'] as List? ?? const [])) a as String],
+        distanceLy: (j['distance_ly'] as num?)?.toDouble(),
+      );
+}
+
+class LandmarkField {
+  const LandmarkField({required this.landmarks, required this.pending, this.source = ''});
+
+  final List<Landmark> landmarks;
+
+  /// Some Hubble/JWST checks are still running; ask again shortly.
+  final bool pending;
+  final String source;
+
+  factory LandmarkField.fromJson(Map<String, dynamic> j) => LandmarkField(
+        landmarks: [
+          for (final l in j['landmarks'] as List) Landmark.fromJson(l as Map<String, dynamic>)
+        ],
+        pending: (j['pending'] ?? false) as bool,
+        source: (j['source'] ?? '') as String,
+      );
+}
+
+/// Second-level view from `GET /api/landmark-detail`.
+class LandmarkDetail {
+  const LandmarkDetail({
+    required this.image,
+    required this.imageSource,
+    required this.credit,
+    this.caption = '',
+    this.fovDeg,
+  });
+
+  final Uint8List image;
+  final String imageSource; // "jwst" | "hst" | "survey"
+  final String credit;
+  final String caption;
+  final double? fovDeg;
+
+  bool get fromSpaceTelescope => imageSource == 'jwst' || imageSource == 'hst';
+}
+
+/// Point of view for the landmark detail image.
+class DetailView {
+  const DetailView(this.view, this.providerKey, this.label);
+
+  /// "auto" | "jwst" | "hst" | "survey"
+  final String view;
+
+  /// Survey used for the close-up (and for colour under Hubble/Webb mosaics).
+  final String? providerKey;
+  final String label;
+
+  static const auto = DetailView('auto', null, 'Best');
+
+  @override
+  bool operator ==(Object other) =>
+      other is DetailView && other.view == view && other.providerKey == providerKey;
+
+  @override
+  int get hashCode => Object.hash(view, providerKey);
+}
+
 /// Downscaled, upright JPEG ready for upload.
 class PreparedPhoto {
   const PreparedPhoto(this.jpeg, this.width, this.height);

@@ -89,7 +89,11 @@ def _tetra3_instance():
 class Tetra3Solver(PlateSolver):
     def solve(self, image_bytes, hint=None):
         hint = hint or SolveHint()
-        t3 = _tetra3_instance()
+        try:
+            t3 = _tetra3_instance()
+        except (ImportError, OSError) as exc:  # not installed / database missing
+            log.error("tetra3 unavailable, using phone sensors only: %s", exc)
+            return None
         img = load_image(image_bytes)
         # A pixel straight above the centre gives the image "up" direction on the sky;
         # this avoids depending on tetra3's internal Roll convention.

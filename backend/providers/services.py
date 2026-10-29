@@ -32,6 +32,11 @@ def cache_key(provider_key, ra, dec, fov, rotation, width, height) -> str:
 
 
 def _down_key(provider: ImageProvider) -> str:
+    """Skip-for-a-while flag. Shared by all providers on one upstream service, except those
+    with their own mirror: they keep working when the service is down (e.g. Pan-STARRS HiPS
+    failing on CDS must not take DSS2/2MASS/AllWISE, which render from ESA, down with it)."""
+    if getattr(provider, "mirror", ""):
+        return f"provider_down:key:{provider.key}"
     return f"provider_down:{provider.service or provider.key}"
 
 
