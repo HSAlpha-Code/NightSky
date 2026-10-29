@@ -1,0 +1,12 @@
+backend/.venv/
+backend/.env
+backend/db.sqlite3
+backend/.cache/
+backend/samples/
+__pycache__/
+*.pyc
+app/build/
+app/.dart_tool/
+app/.flutter-plugins-dependencies
+app/android/local.properties
+app/android/.gradle/
