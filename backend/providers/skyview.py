@@ -20,8 +20,9 @@ class SkyViewProvider(ImageProvider):
     service = "skyview"
 
     def __init__(self, key: str, surveys: list[str], name: str, description: str,
-                 wavelength: str, scaling: str = "Log"):
+                 wavelength: str, scaling: str = "Log", native_arcsec: float = 0.0):
         self.key = key
+        self.native_arcsec = native_arcsec   # source pixel scale; 0 = fine enough for any zoom
         self.surveys = surveys          # one survey = greyscale, three = R,G,B composite
         self.name = name
         self.description = description
