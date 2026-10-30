@@ -84,6 +84,33 @@ class SkyImageEndpointTests(ApiTestCase):
         self.assertEqual(resp.status_code, 400)
 
 
+class SkyViewBusyTests(SimpleTestCase):
+    BUSY = "<html><head><title>Too Many Processes</title></head><body>Sorry</body></html>"
+
+    def _resp(self, text, ctype="text/html", content=b""):
+        r = type("R", (), {})()
+        r.text, r.headers, r.content = text, {"content-type": ctype}, content
+        return r
+
+    @patch("providers.skyview.time.sleep")
+    @patch("providers.skyview.http_get")
+    def test_retries_when_busy_then_succeeds(self, mock_get, _sleep):
+        mock_get.side_effect = [self._resp(self.BUSY), self._resp("skv123"),
+                                self._resp("", "image/jpeg", JPEG)]
+        p = SkyViewProvider("t", ["A", "B", "C"], "t", "", "optical")
+        self.assertEqual(p.fetch_cutout(10, 20, 2.0, 0, 400, 300), JPEG)
+        self.assertEqual(mock_get.call_count, 3)
+
+    @patch("providers.skyview.time.sleep")
+    @patch("providers.skyview.http_get")
+    def test_gives_up_with_short_message(self, mock_get, _sleep):
+        mock_get.return_value = self._resp(self.BUSY)
+        p = SkyViewProvider("t", ["A", "B", "C"], "t", "", "optical")
+        with self.assertRaises(ProviderError) as ctx:
+            p.fetch_cutout(10, 20, 2.0, 0, 400, 300)
+        self.assertNotIn("<", str(ctx.exception))
+
+
 class SkyViewParamTests(SimpleTestCase):
     @patch("providers.skyview.http_get")
     def test_rotation_is_negated_and_size_follows_aspect(self, mock_get):

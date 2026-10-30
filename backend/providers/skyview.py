@@ -1,11 +1,19 @@
 """NASA SkyView (HEASARC/GSFC) provider."""
+import logging
+import re
+import time
+
 from django.conf import settings
 
 from config.http import ExternalServiceError, http_get
 
 from .base import ImageProvider, ProviderError
 
+log = logging.getLogger(__name__)
+
 TEMPSPACE = "https://skyview.gsfc.nasa.gov/tempspace/fits/"
+BUSY_RETRIES = 2      # extra attempts when SkyView says "Too Many Processes"
+BUSY_DELAY = 1.5      # seconds; multiplied by the attempt number
 
 
 class SkyViewProvider(ImageProvider):
@@ -39,15 +47,40 @@ class SkyViewProvider(ImageProvider):
             if rgb:
                 # Return=JPEG thumbnails RGB composites; the full-size file is "<name>_rgb.jpg".
                 params.update(RGB="1", Return="filename")
-                name = http_get(settings.SKYVIEW_URL, params=params).text.strip()
+                name = self._query(params).text.strip()
                 if not name.startswith("skv"):
-                    raise ProviderError(f"SkyView error: {name[:200]}")
+                    raise ProviderError(f"SkyView error: {_summarize(name)}")
                 resp = http_get(f"{TEMPSPACE}{name}_rgb.jpg")
             else:
                 params["Return"] = "JPEG"
-                resp = http_get(settings.SKYVIEW_URL, params=params)
+                resp = self._query(params)
         except ExternalServiceError as exc:
             raise ProviderError(str(exc)) from exc
         if not resp.headers.get("content-type", "").startswith("image/"):
-            raise ProviderError(f"SkyView returned non-image: {resp.text[:200]}")
+            raise ProviderError(f"SkyView returned non-image: {_summarize(resp.text)}")
         return resp.content
+
+    def _query(self, params: dict):
+        """GET runquery.pl, retrying while SkyView is overloaded.
+
+        When busy it answers HTTP 200 with an HTML "Too Many Processes" page, so the status
+        code alone can't be trusted. The condition is usually gone within a few seconds."""
+        for attempt in range(BUSY_RETRIES + 1):
+            resp = http_get(settings.SKYVIEW_URL, params=params)
+            if not _is_busy(resp):
+                return resp
+            if attempt < BUSY_RETRIES:
+                log.info("SkyView busy (too many processes), retrying in %.1fs", BUSY_DELAY * (attempt + 1))
+                time.sleep(BUSY_DELAY * (attempt + 1))
+        raise ProviderError("SkyView is overloaded (too many processes)")
+
+
+def _is_busy(resp) -> bool:
+    ctype = resp.headers.get("content-type", "")
+    return not ctype.startswith("image/") and "too many processes" in resp.text.lower()
+
+
+def _summarize(text: str) -> str:
+    """Collapse an HTML error page to its readable text for logs."""
+    plain = re.sub(r"<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", plain).strip()[:200]
