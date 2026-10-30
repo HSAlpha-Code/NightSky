@@ -56,9 +56,10 @@ void main() {
     ));
     expect(tester.getSize(find.byType(AspectRatio)), const Size(300, 400));
     expect(key.currentState!.split, 0);
-    // The image box is 300 wide (aspect 0.75 in 300x400). A slow gesture avoids touch-slop loss.
-    final gesture = await tester.startGesture(tester.getCenter(find.byType(GestureDetector).last)
-        .translate(-150 + 1, 0));
+    // The image box is 300 wide (aspect 0.75 in 300x400) and the divider starts at its left
+    // edge, so the drag starts on the divider strip. A slow gesture avoids touch-slop loss.
+    final gesture = await tester.startGesture(
+        tester.getTopLeft(find.byType(AspectRatio)).translate(1, 200));
     for (var i = 0; i < 15; i++) {
       await gesture.moveBy(const Offset(10, 0));
       await tester.pump();
@@ -68,6 +69,82 @@ void main() {
     expect(key.currentState!.split, inInclusiveRange(0.44, 0.5));
     // The divider follows the split.
     expect(find.byIcon(Icons.compare_arrows), findsOneWidget);
+  });
+
+  testWidgets('compare view: pinch zooms both images, markers keep their size, reset',
+      (tester) async {
+    final key = GlobalKey<CompareViewState>();
+    double? overlayScale;
+    await tester.pumpWidget(MaterialApp(
+      home: Center(
+        child: SizedBox(
+          width: 300,
+          height: 400,
+          child: CompareView(
+            key: key,
+            original: MemoryImage(png),
+            replacement: MemoryImage(png),
+            aspectRatio: 0.75,
+            initialSplit: 0.5,
+            overlayBuilder: (scale) {
+              overlayScale = scale;
+              return const SizedBox.expand();
+            },
+          ),
+        ),
+      ),
+    ));
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+    expect(find.byTooltip('Reset zoom'), findsNothing);
+
+    // Pinch out around a point on the survey half (right of the divider).
+    final centre = tester.getCenter(find.byType(AspectRatio)).translate(70, 50);
+    final a = await tester.startGesture(centre.translate(-10, 0));
+    final b = await tester.startGesture(centre.translate(10, 0), pointer: 2);
+    for (var i = 0; i < 10; i++) {
+      await a.moveBy(const Offset(-6, 0));
+      await b.moveBy(const Offset(6, 0));
+      await tester.pump();
+    }
+    await a.up();
+    await b.up();
+    await tester.pumpAndSettle();
+
+    final state = key.currentState!;
+    expect(state.scale, greaterThan(1.5));
+    expect(overlayScale, closeTo(state.scale, 1e-6)); // overlay told the zoom level
+    expect(state.split, 0.5); // pinching doesn't move the divider
+    // The original photo is drawn with the same transform as the zoomed survey image.
+    final photo = tester.widget<Transform>(find.descendant(
+        of: find.byType(IgnorePointer), matching: find.byType(Transform)).first);
+    expect(photo.transform, state.zoom.value);
+
+    await tester.tap(find.byTooltip('Reset zoom'));
+    await tester.pumpAndSettle();
+    expect(state.scale, 1);
+    expect(find.byTooltip('Reset zoom'), findsNothing);
+  });
+
+  testWidgets('markers stay the same on-screen size when zoomed', (tester) async {
+    final lm = Landmark.fromJson((landmarksJson()['landmarks'] as List).first);
+    Future<Size> markerSize(double scale) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Material(
+          child: SizedBox(
+            width: 300,
+            height: 300,
+            child: LandmarkOverlay(landmarks: [lm], scale: scale, onTap: (_) {}),
+          ),
+        ),
+      ));
+      final box = tester.renderObject<RenderBox>(find.byKey(const Key('hires-marker')));
+      final topLeft = box.localToGlobal(Offset.zero);
+      final bottomRight = box.localToGlobal(box.size.bottomRight(Offset.zero));
+      return Size(bottomRight.dx - topLeft.dx, bottomRight.dy - topLeft.dy);
+    }
+
+    expect(await markerSize(1), const Size(16, 16));
+    expect(await markerSize(4), const Size(4, 4)); // the zoom (x4) brings it back to 16
   });
 
   testWidgets('result screen shows approximate notice, fallback notice and slider',
@@ -188,7 +265,15 @@ void main() {
     await tester.pump();
 
     expect(find.byType(LandmarkMarker), findsNWidgets(2));
-    expect(find.byIcon(Icons.auto_awesome), findsOneWidget); // M42 has a Webb/Hubble image
+    // M42 has a Webb/Hubble image: a plain gold circle, no icon inside.
+    expect(find.byKey(const Key('hires-marker')), findsOneWidget);
+    final gold = tester.widget<Container>(find.byKey(const Key('hires-marker')));
+    final deco = gold.decoration! as BoxDecoration;
+    expect(deco.shape, BoxShape.circle);
+    expect(deco.color, isNull);
+    expect((deco.border! as Border).top.color, Colors.amber);
+    expect(find.descendant(of: find.byType(LandmarkMarker), matching: find.byType(Icon)),
+        findsNothing);
     expect(find.byTooltip('Hide landmarks'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Great Orion Nebula'));

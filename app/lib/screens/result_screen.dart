@@ -119,11 +119,12 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
               replacement: MemoryImage(s.skyImage!.bytes),
               aspectRatio: aspect,
               initialSplit: _split,
-              overlay: _showMarkers && s.landmarks != null && !s.busy
-                  ? LandmarkOverlay(
-                      landmarks: s.landmarks!.landmarks,
-                      onTap: (lm) => _openLandmark(lm, s.skyImage!.providerKey),
-                    )
+              overlayBuilder: _showMarkers && s.landmarks != null && !s.busy
+                  ? (scale) => LandmarkOverlay(
+                        landmarks: s.landmarks!.landmarks,
+                        scale: scale,
+                        onTap: (lm) => _openLandmark(lm, s.skyImage!.providerKey),
+                      )
                   : null,
             )
           else

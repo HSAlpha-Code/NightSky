@@ -12,7 +12,8 @@ import numpy as np
 from . import catalog as catalog_mod
 from . import mast, mosaic, services, tone
 from .catalog import Catalog, load_from_texts, priority
-from .parsing import parse_iau_stars, parse_openngc, pretty_code
+from .parsing import (merge_stars, parse_iau_stars, parse_openngc, parse_wgsn_csv, pretty_code,
+                      wgsn_html_to_csv)
 
 NGC_HEADER = ("Name;Type;RA;Dec;Const;MajAx;MinAx;PosAng;B-Mag;V-Mag;J-Mag;H-Mag;K-Mag;SurfBr;"
               "Hubble;Pax;Pm-RA;Pm-Dec;RadVel;Redshift;Cstar U-Mag;Cstar B-Mag;Cstar V-Mag;M;NGC;"
@@ -68,6 +69,66 @@ class ParsingTests(SimpleTestCase):
     def test_pretty_code(self):
         self.assertEqual(pretty_code("NGC0224"), "NGC 224")
         self.assertEqual(pretty_code("IC0434"), "IC 434")
+
+    def test_messier_objects_of_skipped_types_are_kept(self):
+        rows = [
+            "M040;**;12:22:16.1;+58:05:04;UMa;;;;;8.00;;;;;;;;;;;;;;040;;;;;;;;",
+            "NGC6994;Other;20:58:55.97;-12:38:07.8;Aqr;;;;;8.90;;;;;;;;;;;;;;073;;;;;;;;",
+            "M102;Dup;14:03:12.54;+54:20:56.2;UMa;;;;;;;;;;;;;;;;;;;101;;;;;;;;",
+            "NGC5866;G;15:06:29.50;+55:45:47.6;Dra;6.31;;;10.74;9.89;;;;;;;;;;;;;;;;;;;;;;",
+            "NGC7000;*;20:58:47;+44:19:48;Cyg;;;;;;;;;;;;;;;;;;;;;;;;;;;",      # plain star
+            "IC0067;NonEx;01:00:00;+30:00:00;Psc;;;;;;;;;;;;;;;;;;;;;;;;;;;",
+        ]
+        objs = {o.id: o for o in parse_openngc("\n".join([NGC_HEADER, *rows]))}
+        self.assertEqual(set(objs), {"M040", "NGC6994", "NGC5866"})
+        self.assertEqual((objs["M040"].name, objs["M040"].type_label), ("M40", "Double star"))
+        self.assertEqual(objs["M040"].aliases, ())             # "M 40" is not repeated
+        self.assertEqual((objs["NGC6994"].name, objs["NGC6994"].type_label), ("M73", "Asterism"))
+        self.assertEqual((objs["NGC5866"].messier, objs["NGC5866"].name), (102, "M102"))
+        self.assertIn("NGC 5866", objs["NGC5866"].aliases)
+        self.assertEqual(priority(objs["M040"], 60), (0, 8.0))   # Messier: always markable
+
+
+WGSN_HTML = """<html><body><table id="table_2"><thead><tr><th> proper names</th><th> NEC+</th>
+<th> Designation</th><th> HIP</th><th> Bayer ID</th><th> Constellation</th><th> Origin</th>
+<th> Date of Adoption</th><th> RA</th><th> DEC</th><th> mag</th><th> band</th></tr></thead>
+<tbody><tr><td>Bawy</td><td>692</td><td>HR 649</td><td>10324</td><td>ξ1 Cet</td><td>Cet</td>
+<td>Egyptian <b>name</b>, two souls</td><td>2026/10/15</td><td>33.25000133</td>
+<td>8.846702351</td><td>4.35</td><td></td></tr>
+<tr><td>Betelgeuse</td><td>1</td><td>HR 2061</td><td>27989</td><td>α Ori</td><td>Ori</td><td>x</td>
+<td>2016/06/30</td><td>88.792939</td><td>7.407064</td><td>0.45</td><td>V</td></tr>
+<tr><td>Siwarha</td><td>10132</td><td>-</td><td></td><td>α Ori B</td><td>Ori</td><td>x</td>
+<td>2025/09/22</td><td>88.79293899</td><td>7.407064</td><td>8.2</td><td></td></tr>
+<tr><td>Broken</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>n/a</td>
+<td>1</td><td></td><td></td></tr></tbody></table>
+<table id="wp-calendar"><tr><th>M</th></tr><tr><td>1</td></tr></table></body></html>"""
+
+
+class WgsnTests(SimpleTestCase):
+    def test_html_table_to_stars(self):
+        stars = {s.name: s for s in parse_wgsn_csv(wgsn_html_to_csv(WGSN_HTML))}
+        self.assertEqual(set(stars), {"Bawy", "Betelgeuse", "Siwarha"})   # "Broken": no RA
+        bawy = stars["Bawy"]
+        self.assertEqual((bawy.id, bawy.constellation, bawy.magnitude), ("HIP10324", "Cet", 4.35))
+        self.assertAlmostEqual(bawy.ra, 33.25, places=2)
+        self.assertEqual(bawy.aliases, ("ξ1 Cet", "HR 649", "HIP 10324"))
+        self.assertEqual(stars["Siwarha"].id, "STAR-Siwarha")             # no HIP number
+        self.assertNotIn("-", stars["Siwarha"].aliases)
+
+    def test_page_without_star_table_is_rejected(self):
+        with self.assertRaises(ValueError):
+            wgsn_html_to_csv("<table><tr><th>a</th></tr><tr><td>1</td></tr></table>")
+
+    def test_new_names_are_added_without_duplicates(self):
+        old = parse_iau_stars(STARS)
+        merged = merge_stars(old, parse_wgsn_csv(wgsn_html_to_csv(WGSN_HTML)))
+        names = [s.name for s in merged]
+        self.assertEqual(names.count("Betelgeuse"), 1)     # already in IAU-CSN.txt
+        self.assertEqual(merged[:len(old)], old)            # existing entries are unchanged
+        self.assertIn("Bawy", names)
+        self.assertIn("Siwarha", names)
+        cat = load_from_texts(NGC_HEADER, NGC_HEADER, STARS, wgsn_html_to_csv(WGSN_HTML))
+        self.assertEqual(cat.get("HIP10324").name, "Bawy")
 
 
 class QueryTests(SimpleTestCase):

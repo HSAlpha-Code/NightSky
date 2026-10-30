@@ -146,6 +146,9 @@ OPENNGC_URL = env("OPENNGC_URL",
                   "https://raw.githubusercontent.com/mattiaverga/OpenNGC/master/database_files")
 IAU_STAR_NAMES_URL = env("IAU_STAR_NAMES_URL",
                          "https://www.pas.rochester.edu/~emamajek/WGSN/IAU-CSN.txt")
+# The list above stopped being updated in 2022; the IAU WGSN now publishes the current names
+# as a table on this page. `manage.py fetch_catalogs` saves it as data/catalogs/IAU-WGSN.csv.
+IAU_WGSN_URL = env("IAU_WGSN_URL", "https://exopla.net/star-names/modern-iau-star-names/")
 LANDMARK_MAX_MARKERS = int(env("LANDMARK_MAX_MARKERS", "20"))
 MAST_URL = env("MAST_URL", "https://mast.stsci.edu/api/v0/invoke")
 # MAST position searches take 10-35 s (busy fields like M42 the longest); they run in

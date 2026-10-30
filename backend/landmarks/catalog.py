@@ -18,11 +18,15 @@ from config.errors import CATALOG_UNAVAILABLE, ApiError
 from config.http import ExternalServiceError, http_get
 from providers.hips_render import output_wcs
 
-from .parsing import Landmark, parse_iau_stars, parse_openngc
+from .parsing import (Landmark, merge_stars, parse_iau_stars, parse_openngc, parse_wgsn_csv,
+                      wgsn_html_to_csv)
 
 log = logging.getLogger(__name__)
 
 NGC_FILE, ADDENDUM_FILE, STARS_FILE = "NGC.csv", "addendum.csv", "IAU-CSN.txt"
+# Current IAU star names (the IAU-CSN.txt download stopped being updated in 2022). Optional:
+# written by `manage.py fetch_catalogs` from the WGSN web page; used when present.
+WGSN_FILE = "IAU-WGSN.csv"
 MIN_SEPARATION = 0.035     # markers closer than this (fraction of image width) are dropped
 
 
@@ -129,8 +133,24 @@ def ensure_files(force: bool = False) -> Path:
     return folder
 
 
-def load_from_texts(ngc: str, addendum: str, stars: str) -> Catalog:
-    return Catalog(parse_openngc(ngc) + parse_openngc(addendum) + parse_iau_stars(stars))
+def fetch_wgsn(folder: Path) -> int:
+    """Download the current IAU star-name table and save it as WGSN_FILE in `folder`.
+
+    Returns the number of stars. Raises ExternalServiceError (download) or ValueError (the
+    page no longer contains a usable table); the existing file is kept in both cases."""
+    html = http_get(settings.IAU_WGSN_URL, timeout=60).text
+    text = wgsn_html_to_csv(html)
+    count = len(parse_wgsn_csv(text))
+    path = folder / WGSN_FILE
+    tmp = path.with_suffix(".part")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+    return count
+
+
+def load_from_texts(ngc: str, addendum: str, stars: str, wgsn: str = "") -> Catalog:
+    named = merge_stars(parse_iau_stars(stars), parse_wgsn_csv(wgsn) if wgsn else [])
+    return Catalog(parse_openngc(ngc) + parse_openngc(addendum) + named)
 
 
 _lock = threading.Lock()
@@ -149,6 +169,11 @@ def get_catalog() -> Catalog:
                     raise ApiError(CATALOG_UNAVAILABLE, "The landmark catalogue couldn't be "
                                    "downloaded. Try again later.", 503) from exc
                 read = lambda n: (folder / n).read_text(encoding="utf-8", errors="replace")
-                _catalog = load_from_texts(read(NGC_FILE), read(ADDENDUM_FILE), read(STARS_FILE))
+                wgsn = next((p for p in (folder / WGSN_FILE,
+                                         Path(settings.CATALOG_DIR) / WGSN_FILE) if p.is_file()),
+                            None)
+                _catalog = load_from_texts(
+                    read(NGC_FILE), read(ADDENDUM_FILE), read(STARS_FILE),
+                    wgsn.read_text(encoding="utf-8", errors="replace") if wgsn else "")
                 log.info("landmark catalogue: %d objects", len(_catalog.landmarks))
     return _catalog

@@ -18,7 +18,8 @@ opens a close-up from Hubble, JWST or any survey.
 3. `POST /api/sky-image`: a survey cutout of that field from the chosen image source. If the
    source doesn't cover the position or is down, another one is used and the app says so.
 4. `GET /api/landmarks`: Messier/NGC objects and bright named stars in the field (OpenNGC + IAU
-   star names), drawn as markers. Gold markers have Hubble/JWST data (checked via MAST).
+   star names), drawn as markers. Gold circles have Hubble/JWST data (checked via MAST).
+   Pinch the result image to zoom in on any spot; markers keep their size.
 5. `GET /api/landmark-detail`: the second-level view. *Best* = JWST, then Hubble, then a survey.
    Hubble/JWST mosaics are stitched from ESA ESASky tiles, so neighbouring frames fill the field,
    and coloured with a ground-based survey. Over-exposed images get their highlights compressed.
@@ -61,7 +62,8 @@ Self-hosting on a normal server (plate solving is CPU-heavy, keep generous timeo
 gunicorn config.wsgi -w 2 --threads 4 --timeout 300 -b 0.0.0.0:8000
 ```
 Useful: `manage.py cutout 83.82 -5.39 2.0 -o orion.jpg` (save a cutout),
-`manage.py fetch_catalogs` (refresh the landmark catalogue), `manage.py test`.
+`manage.py fetch_catalogs` (download missing catalogue files; `--force` refreshes all of them,
+including the current IAU star names from the WGSN table on exopla.net), `manage.py test`.
 All settings are environment variables, listed in `backend/.env.example`.
 
 ### App on a phone over USB

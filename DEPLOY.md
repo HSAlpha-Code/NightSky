@@ -22,7 +22,8 @@ whole API from one function. No code changes are needed for deployment.
 
 ### Steps (GitHub + dashboard, recommended)
 1. Push the project to a GitHub repository. Check the catalogue is included:
-   `git ls-files backend/data/catalogs` must list `NGC.csv`, `addendum.csv`, `IAU-CSN.txt`.
+   `git ls-files backend/data/catalogs` must list `NGC.csv`, `addendum.csv`, `IAU-CSN.txt`
+   and `IAU-WGSN.csv` (current IAU star names; optional, but without it ~180 names are missing).
 2. On <https://vercel.com/new>, import the repository.
 3. **Project Name:** `nightsky-backend`
 4. **Root Directory:** click *Edit* and choose **`backend`**. (Important: the Django project

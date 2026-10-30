@@ -5,13 +5,18 @@ import '../models.dart';
 /// Small tappable markers drawn over the survey image. Positions are fractions of the image
 /// (0..1), so this must be laid out in the same box as the image.
 ///
-/// Styles: filled ring + glow = Hubble/JWST image available; hollow dashed-looking ring =
-/// basic info only; small white star dot = named star; faint pulsing = still checking.
+/// Styles: gold circle = Hubble/JWST image available; blue circle = basic info only; grey
+/// circle = still checking; small white circle = named star.
+///
+/// [scale] is the current zoom of the image underneath: markers stay at their sky position
+/// but are drawn at a constant on-screen size (they are counter-scaled).
 class LandmarkOverlay extends StatelessWidget {
-  const LandmarkOverlay({super.key, required this.landmarks, required this.onTap});
+  const LandmarkOverlay(
+      {super.key, required this.landmarks, required this.onTap, this.scale = 1.0});
 
   final List<Landmark> landmarks;
   final ValueChanged<Landmark> onTap;
+  final double scale;
 
   static const double hitSize = 36;
 
@@ -23,7 +28,10 @@ class LandmarkOverlay extends StatelessWidget {
           Positioned(
             left: lm.x * box.maxWidth - hitSize / 2,
             top: lm.y * box.maxHeight - hitSize / 2,
-            child: LandmarkMarker(landmark: lm, onTap: () => onTap(lm)),
+            child: Transform.scale(
+              scale: 1 / scale,
+              child: LandmarkMarker(landmark: lm, onTap: () => onTap(lm)),
+            ),
           ),
       ]);
     });
@@ -52,15 +60,13 @@ class LandmarkMarker extends StatelessWidget {
       );
     } else if (hires) {
       dot = Container(
+        key: const Key('hires-marker'),
         width: 16,
         height: 16,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Colors.amber.withValues(alpha: 0.35),
           border: Border.all(color: Colors.amber, width: 2),
-          boxShadow: [BoxShadow(color: Colors.amber.withValues(alpha: 0.6), blurRadius: 8)],
         ),
-        child: const Icon(Icons.auto_awesome, size: 9, color: Colors.white),
       );
     } else {
       dot = Container(
