@@ -24,7 +24,7 @@ PROVIDERS: list[ImageProvider] = [
     SkyViewProvider("skyview_mellinger", ["Mellinger Red", "Mellinger Green", "Mellinger Blue"],
                     "Mellinger Color (SkyView)",
                     "Axel Mellinger's all-sky colour mosaic. Best for wide phone-camera fields.",
-                    "optical", scaling="Linear", native_arcsec=36.0),
+                    "optical", scaling="Linear"),
     SkyViewProvider("skyview_dss2_red", ["DSS2 Red"], "DSS2 Red (SkyView)",
                     "Digitized Sky Survey 2 red plates via NASA SkyView. Best below ~10°.", "optical"),
     PanStarrsProvider(),

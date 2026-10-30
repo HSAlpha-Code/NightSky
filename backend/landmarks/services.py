@@ -7,7 +7,6 @@ from django.conf import settings
 from django.core.cache import cache
 
 from config.errors import NO_COVERAGE, NOT_FOUND, ApiError
-from providers.registry import get_provider
 from providers.services import get_sky_image
 
 from . import mast, mosaic, tone
@@ -26,7 +25,6 @@ MOSAIC_MAX_FOV = 1.0
 # Tried (in order) when the chosen survey is burnt out under a mosaic. 2MASS is infrared,
 # so its colour also suits JWST, and it rarely saturates on nebula cores.
 BACKGROUND_FALLBACKS = ("2mass_color", "dss2_color")
-MIN_BACKGROUND_PIXELS = 200   # native survey pixels needed across the mosaic, else it looks blocky
 
 
 def landmarks_in_field(ra, dec, fov, rotation=0.0, aspect=4 / 3, limit=None) -> dict:
@@ -86,11 +84,6 @@ def _background(ra, dec, fov, provider_key) -> tuple[bytes | None, str]:
     surveys is used. Returns (jpeg, survey name)."""
     best, best_burnt = (None, ""), 2.0
     for key in dict.fromkeys([provider_key, *BACKGROUND_FALLBACKS]):
-        # A coarse all-sky survey (Mellinger, 36"/px) would show as big blocks in a small field.
-        native = getattr(get_provider(key), "native_arcsec", 0.0)
-        if native and fov * 3600 / native < MIN_BACKGROUND_PIXELS:
-            log.info("survey %s too coarse for a %.1f' mosaic background", key, fov * 60)
-            continue
         try:
             sky = get_sky_image(ra, dec, fov, 0.0, key, MOSAIC_SIZE, MOSAIC_SIZE)
         except ApiError as exc:
@@ -140,7 +133,7 @@ def landmark_detail(landmark_id: str, provider_key: str | None = None,
         raise ApiError(NOT_FOUND, f"Unknown landmark {landmark_id!r}.", 404)
     if view not in VIEWS:
         raise ApiError("INVALID_REQUEST", f"Unknown view {view!r}.")
-    key = "lmdetail7:" + hashlib.sha1(f"{lm.id}|{provider_key}|{view}".encode()).hexdigest()
+    key = "lmdetail6:" + hashlib.sha1(f"{lm.id}|{provider_key}|{view}".encode()).hexdigest()
     cached = cache.get(key)
     if cached is not None:
         return cached
