@@ -133,6 +133,41 @@ class RotationTests(SimpleTestCase):
         self.assertAngle(p.rotation, 0, tol=0.6)
 
 
+def gravity_magnetic_matrix(gravity, magnetic):
+    """Same algorithm as the app's compass mode (sky_math.dart rotationFromGravityAndMagnetic
+    and Android's SensorManager.getRotationMatrix): device -> world from raw readings."""
+    g = np.asarray(gravity, float)
+    east = np.cross(magnetic, g)
+    east /= np.linalg.norm(east)
+    up = g / np.linalg.norm(g)
+    north = np.cross(up, east)
+    return np.vstack([east, north, up])
+
+
+class CompassModeTests(SimpleTestCase):
+    """The app's default (no-gyroscope) sensor mode must give the backend the same pointing,
+    including when the camera is tilted up to and past the zenith."""
+    field = np.array([0.0, 22.0, -40.0])        # uT in the world frame: north and down
+
+    def readings(self, m):
+        return m.T @ np.array([0.0, 0.0, 9.81]), m.T @ self.field
+
+    def test_matches_true_pose(self):
+        for alt, az in [(5, 10), (30, 100), (60, 200), (85, 300)]:
+            m = phone_at(alt, az)
+            rebuilt = gravity_magnetic_matrix(*self.readings(m))
+            np.testing.assert_allclose(rebuilt, m, atol=1e-12)
+            p = pointing_from_matrix(rebuilt, GREENWICH_LAT, 0.0, 0.0, GAST_TIME)
+            self.assertAlmostEqual(p.alt, alt, places=6)
+
+    def test_high_tilt_is_never_below_horizon(self):
+        for alt in range(1, 90):
+            for az in (0, 135, 270):
+                rebuilt = gravity_magnetic_matrix(*self.readings(phone_at(alt, az)))
+                p = pointing_from_matrix(rebuilt, GREENWICH_LAT, 0.0, 0.0, GAST_TIME)
+                self.assertAlmostEqual(p.alt, alt, places=6, msg=f"alt {alt} az {az}")
+
+
 class MagneticDeclinationTests(SimpleTestCase):
     when = datetime(2026, 10, 29, 4, 0, tzinfo=timezone.utc)
 

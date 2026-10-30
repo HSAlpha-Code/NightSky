@@ -8,6 +8,8 @@ import 'package:geolocator/geolocator.dart';
 
 import '../models.dart';
 import '../sensors.dart';
+import '../settings.dart';
+import '../sky_math.dart';
 import '../state.dart';
 import '../widgets/camera_hints.dart';
 import '../widgets/provider_picker.dart';
@@ -22,6 +24,9 @@ class CameraScreen extends ConsumerStatefulWidget {
 }
 
 class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBindingObserver {
+  /// How long the phone must stay steady before auto-capture fires.
+  static const autoCaptureHold = Duration(seconds: 2);
+
   final _orientation = OrientationTracker();
   final _location = LocationService();
   CameraController? _controller;
@@ -30,21 +35,25 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   String? _cameraError;
   bool _cameraPermissionDenied = false;
   LocationStatus? _locationStatus;
+  SensorAvailability? _sensors;
   bool _capturing = false;
   bool _showTips = true;
   Timer? _shakeTimer;
   double _shake = 0;
+  ({double altitude, double azimuth})? _pointing;
+  DateTime? _steadySince;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _orientation.start();
+    SensorAvailability.query().then((s) {
+      if (mounted) setState(() => _sensors = s);
+    });
+    _startSensors(ref.read(settingsProvider));
     // Camera first, then location, so the two permission dialogs don't overlap.
     _initCamera().then((_) => _initLocation());
-    _shakeTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
-      if (mounted) setState(() => _shake = _orientation.shake());
-    });
+    _shakeTimer = Timer.periodic(const Duration(milliseconds: 250), (_) => _tick());
   }
 
   @override
@@ -54,6 +63,39 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     _orientation.stop();
     _controller?.dispose();
     super.dispose();
+  }
+
+  void _startSensors(AppSettings s) => _orientation.start(
+      mode: s.useGyroscope ? SensorMode.gyro : SensorMode.compass, alpha: s.smoothing.alpha);
+
+  /// 4x a second: steadiness, the altitude/heading readout and auto-capture.
+  void _tick() {
+    if (!mounted) return;
+    final settings = ref.read(settingsProvider);
+    final q = _orientation.engine.current;
+    final shake = _orientation.shake();
+    final steady = _orientation.hasData && shake <= settings.steadiness.maxShakeDeg;
+    final now = DateTime.now();
+    _steadySince = steady ? (_steadySince ?? now) : null;
+    setState(() {
+      _shake = shake;
+      _pointing = q == null ? null : cameraAltAzDeg(q);
+    });
+    if (settings.autoCapture &&
+        _steadySince != null &&
+        now.difference(_steadySince!) >= autoCaptureHold &&
+        !_capturing &&
+        ModalRoute.of(context)?.isCurrent == true) {
+      _steadySince = null;
+      _capture();
+    }
+  }
+
+  /// Fraction of the auto-capture hold already done (0..1), or null when not counting.
+  double? get _autoCaptureProgress {
+    if (!ref.read(settingsProvider).autoCapture || _steadySince == null) return null;
+    final held = DateTime.now().difference(_steadySince!);
+    return (held.inMilliseconds / autoCaptureHold.inMilliseconds).clamp(0.0, 1.0);
   }
 
   @override
@@ -135,8 +177,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         longitude: position?.longitude,
         altitude: position?.altitude,
         quaternion: quaternion,
-        // Android's rotation vector is referenced to magnetic north; the backend applies
-        // the World Magnetic Model declination.
+        // Both sensor modes are referenced to magnetic north; the backend applies the
+        // World Magnetic Model declination.
         reference: 'magnetic_north',
         fovDeg: _fovDeg,
       );
@@ -155,6 +197,12 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
   @override
   Widget build(BuildContext context) {
+    // Settings changes (sensor mode, smoothing) apply immediately.
+    ref.listen<AppSettings>(settingsProvider, (prev, next) {
+      if (prev?.useGyroscope != next.useGyroscope || prev?.smoothing != next.smoothing) {
+        _startSensors(next);
+      }
+    });
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.black,
@@ -205,10 +253,22 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       case LocationStatus.granted || null:
         break;
     }
-    if (!_orientation.isSupported || _orientation.lastError != null) {
-      banners.add(const InfoBanner(
+    final settings = ref.watch(settingsProvider);
+    final mode = settings.useGyroscope ? SensorMode.gyro : SensorMode.compass;
+    final unsupported = _sensors != null && !_sensors!.supports(mode);
+    if (unsupported || _orientation.lastError != null) {
+      final canSwitch = mode == SensorMode.gyro && (_sensors?.supports(SensorMode.compass) ?? false);
+      banners.add(InfoBanner(
         icon: Icons.explore_off_outlined,
-        text: 'Motion sensors are unavailable, so positions rely on star matching only.',
+        text: canSwitch
+            ? 'This phone has no usable gyroscope. Turn it off in Settings to use the compass.'
+            : 'Motion sensors are unavailable, so positions rely on star matching only.',
+        action: canSwitch ? 'Use compass' : null,
+        onTap: canSwitch
+            ? () => ref
+                .read(settingsProvider.notifier)
+                .update((s) => s.copyWith(useGyroscope: false))
+            : null,
       ));
     }
     return banners;
@@ -246,7 +306,25 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           child: CaptureTips(onClose: () => setState(() => _showTips = false)),
         ),
       if (_orientation.hasData)
-        Positioned(left: 0, right: 0, bottom: 12, child: SteadyIndicator(shakeDeg: _shake)),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 12,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (ref.watch(settingsProvider).showPointingReadout && _pointing != null)
+              PointingReadout(
+                altitudeDeg: _pointing!.altitude,
+                azimuthDeg: _pointing!.azimuth,
+                usingGyroscope: _orientation.mode == SensorMode.gyro,
+              ),
+            const SizedBox(height: 6),
+            SteadyIndicator(
+              shakeDeg: _shake,
+              maxShakeDeg: ref.watch(settingsProvider).steadiness.maxShakeDeg,
+              autoCaptureProgress: _autoCaptureProgress,
+            ),
+          ]),
+        ),
     ]);
   }
 

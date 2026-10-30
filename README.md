@@ -10,8 +10,11 @@ opens a close-up from Hubble, JWST or any survey.
 **Deploying (Vercel + APK): see [DEPLOY.md](DEPLOY.md).**
 
 ## How it works
-1. The app takes a photo and records GPS, time, the fused phone orientation and the camera's
-   field of view.
+1. The app takes a photo and records GPS, time, the phone orientation and the camera's field of
+   view. By default the orientation comes from the accelerometer + compass only (no gyroscope,
+   like Sky Map's "legacy sensors"), so tilting up never flips to "below the horizon".
+   Settings > Sensors can enable the gyroscope-fused sensor and set smoothing, steadiness,
+   auto-capture and an altitude/heading readout; Settings > Display sets the font size.
 2. `POST /api/solve`: the backend turns the orientation into a sky position (astropy, magnetic
    declination via pygeomag), then refines it by plate-solving the stars (tetra3). With too few
    stars it returns the sensor position marked *approximate*.

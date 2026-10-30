@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// Max orientation spread (degrees) over the last 0.6 s that still counts as "steady".
-const maxShakeDeg = 1.5;
+/// Default max orientation spread (degrees) over the last 0.6 s that still counts as
+/// "steady". The user can change it in Settings (Steadiness).
+const defaultMaxShakeDeg = 1.5;
 
 class InfoBanner extends StatelessWidget {
   const InfoBanner({super.key, required this.icon, required this.text, this.action, this.onTap});
@@ -56,19 +57,81 @@ class CaptureTips extends StatelessWidget {
 }
 
 class SteadyIndicator extends StatelessWidget {
-  const SteadyIndicator({super.key, required this.shakeDeg});
+  const SteadyIndicator({
+    super.key,
+    required this.shakeDeg,
+    this.maxShakeDeg = defaultMaxShakeDeg,
+    this.autoCaptureProgress,
+  });
 
   final double shakeDeg;
+  final double maxShakeDeg;
+
+  /// Auto-capture countdown (0..1) while the phone is steady; null when auto-capture is off.
+  final double? autoCaptureProgress;
 
   @override
   Widget build(BuildContext context) {
     final steady = shakeDeg <= maxShakeDeg;
+    final progress = autoCaptureProgress;
     return Center(
       child: Chip(
-        avatar: Icon(steady ? Icons.check_circle : Icons.pan_tool_alt_outlined,
-            color: steady ? Colors.greenAccent : Colors.amber, size: 18),
-        label: Text(steady ? 'Steady' : 'Hold steady…'),
+        avatar: steady && progress != null
+            ? SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(
+                    value: progress, strokeWidth: 2.5, color: Colors.greenAccent),
+              )
+            : Icon(steady ? Icons.check_circle : Icons.pan_tool_alt_outlined,
+                color: steady ? Colors.greenAccent : Colors.amber, size: 18),
+        label: Text(steady
+            ? (progress != null ? 'Steady, taking photo…' : 'Steady')
+            : 'Hold steady…'),
         backgroundColor: Colors.black.withValues(alpha: 0.6),
+      ),
+    );
+  }
+}
+
+/// Where the camera points, from the motion sensors: altitude above the horizon and
+/// compass heading (magnetic). Lets the user check the sensors before taking a photo.
+class PointingReadout extends StatelessWidget {
+  const PointingReadout({
+    super.key,
+    required this.altitudeDeg,
+    required this.azimuthDeg,
+    required this.usingGyroscope,
+  });
+
+  final double altitudeDeg;
+  final double azimuthDeg;
+  final bool usingGyroscope;
+
+  static const _directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+
+  static String compassPoint(double azimuthDeg) =>
+      _directions[((azimuthDeg % 360) / 45).round() % 8];
+
+  @override
+  Widget build(BuildContext context) {
+    final below = altitudeDeg < 0;
+    final alt = '${altitudeDeg >= 0 ? '+' : '−'}${altitudeDeg.abs().round()}°';
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          'Alt $alt${below ? ' (below horizon)' : ''} · '
+          '${compassPoint(azimuthDeg)} ${azimuthDeg.round() % 360}° · '
+          '${usingGyroscope ? 'gyro' : 'compass'}',
+          key: const Key('pointing-readout'),
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: below ? Colors.amber : Colors.white,
+              fontFeatures: const [FontFeature.tabularFigures()]),
+        ),
       ),
     );
   }
