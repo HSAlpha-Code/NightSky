@@ -47,9 +47,10 @@ back to the previous source). Several images per object are shown in a swipeable
 dots; caption, credit and source link follow the current image. The backend serves stored files
 as-is and never contacts the outlet at request time.
 
-The content is managed with a local-only tool (gitignored; it exists only on the maintainer's
-machine, with its own instructions) and shipped to the backend as a read-only bundle
-(`backend/curated_bundle/`: `manifest.json` + `images/`) at deploy time. Without a bundle the
+The content is managed with a local curator tool (`local_tools/curator/`, see its README; it is
+off unless `ENABLE_CURATOR=1`, binds to 127.0.0.1 and is never part of the deployed backend) and
+shipped to the backend as a read-only bundle (`backend/curated_bundle/`: `manifest.json` +
+`images/`, committed to the repo) at deploy time. Without a bundle the
 endpoints simply return an empty index. `CURATED_SOURCE` = `auto` (default locally: bundle if
 present, else the `CuratedHighlight` table) / `bundle` (default on Vercel) / `db`.
 

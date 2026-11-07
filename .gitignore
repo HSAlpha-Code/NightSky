@@ -18,7 +18,7 @@ app/android/*.jks
 backend/staticfiles/
 .vercel/
 
-# Local-only curator tool, curated images and local DB (never commit or deploy)
-local_tools/
-# Exported bundle of curated images + manifest (ships with `vercel --prod`, not via GitHub)
-backend/curated_bundle/
+# Curator tool (local_tools/curator) is tracked; only its working data stays local.
+local_tools/curator/media/
+local_tools/curator/*.sqlite3
+local_tools/curator/__pycache__/

@@ -74,10 +74,9 @@ vercel --prod
 ### Updating the backend
 Push to the main branch: Vercel redeploys automatically. Or run `vercel --prod` again.
 
-**Curated Cosmic Highlights:** the content bundle (`backend/curated_bundle/`) is gitignored, so
-a GitHub-triggered build does not include it. Publish new highlights by exporting from the local
-curator tool and deploying from your machine with `cd backend; vercel --prod` (details are in the
-tool's own README, which stays out of GitHub).
+**Curated Cosmic Highlights:** the content bundle (`backend/curated_bundle/`) is committed, so a normal
+push redeploys with it. Publish new highlights by exporting from the local curator tool
+(`local_tools/curator/README.md`), then commit and push.
 
 ---
 

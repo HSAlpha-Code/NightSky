@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>NightSky curator (local)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+ body{font:14px system-ui,sans-serif;margin:0;background:#12141c;color:#e6e8ef;display:flex;height:100vh}
+ a{color:#8ab4ff} input,textarea,button{font:inherit;color:inherit;background:#1d2130;border:1px solid #39405a;border-radius:6px;padding:6px 8px}
+ button{cursor:pointer} button:hover{background:#2a3150} button.danger{border-color:#9b3b3b}
+ #side{width:320px;border-right:1px solid #2a3046;display:flex;flex-direction:column}
+ #side header{padding:12px} #q{width:100%;box-sizing:border-box}
+ #list{overflow:auto;flex:1} .body{padding:8px 12px;border-top:1px solid #20263a;cursor:pointer}
+ .body:hover,.body.sel{background:#232a42} .muted{color:#8f97b3;font-size:12px} .pill{background:#3a4a8a;border-radius:10px;padding:0 7px;font-size:12px;margin-left:6px}
+ #main{flex:1;overflow:auto;padding:16px 20px}
+ .rights{background:#3a3115;border:1px solid #8a7425;border-radius:8px;padding:8px 12px;margin-bottom:14px}
+ .card{display:flex;gap:12px;border:1px solid #2f3652;border-radius:10px;padding:10px;margin:10px 0;background:#181c2a}
+ .card.off{opacity:.55} .card img{width:180px;height:140px;object-fit:contain;background:#000;border-radius:6px}
+ .fields{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px} .fields .wide{grid-column:1/3}
+ .fields label{display:flex;flex-direction:column;font-size:12px;color:#9aa3c2;gap:2px}
+ .actions{display:flex;flex-direction:column;gap:6px}
+ .add{border:1px dashed #4a547a;border-radius:10px;padding:12px;margin-top:18px}
+ .add .row{display:flex;gap:8px;margin:6px 0;flex-wrap:wrap} .add input[type=text]{flex:1;min-width:200px}
+ #msg{position:fixed;right:16px;bottom:16px;background:#2a3150;padding:8px 14px;border-radius:8px;display:none}
+</style></head><body>
+<div id="side"><header><b>Celestial bodies</b><br>
+ <input id="q" placeholder="Search name, M31, NGC 1976, Vega..." autofocus>
+ <div class="muted" id="hint" style="margin-top:6px"></div></header>
+ <div id="list"></div>
+ <header><button id="export" style="width:100%">Export bundle for deploy</button></header></div>
+<div id="main"><div class="muted">Pick a body on the left.</div></div>
+<div id="msg"></div>
+<script>
+const $=(s,r=document)=>r.querySelector(s);
+const H={'X-Curator':'1'};
+let current=null, timer=null;
+const el=(tag,attrs={},...kids)=>{const e=document.createElement(tag);
+  for(const [k,v] of Object.entries(attrs)){ if(k==='class')e.className=v; else if(k.startsWith('on'))e[k]=v; else if(k==='value')e.value=v; else if(v!==false)e.setAttribute(k,v===true?'':v);}
+  kids.flat().forEach(c=>e.append(c));return e;};
+function toast(t){const m=$('#msg');m.textContent=t;m.style.display='block';clearTimeout(m._t);m._t=setTimeout(()=>m.style.display='none',3500);}
+async function api(url,opt={}){const r=await fetch(url,{...opt,headers:{...H,...(opt.headers||{})}});
+  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.statusText);return j;}
+async function loadList(){
+  const q=$('#q').value.trim();
+  const {bodies}=await api('/api/bodies?q='+encodeURIComponent(q));
+  $('#hint').textContent=q?`${bodies.length} match(es)`:'Bodies that already have highlights:';
+  const list=$('#list');list.replaceChildren(...bodies.map(b=>el('div',{class:'body'+(current&&current.id===b.id?' sel':''),onclick:()=>select(b)},
+    el('div',{},b.name||b.id,b.count?el('span',{class:'pill'},String(b.count)):''),
+    el('div',{class:'muted'},[b.id,b.type].filter(Boolean).join(' · ')))));
+}
+$('#q').oninput=()=>{clearTimeout(timer);timer=setTimeout(loadList,200);};
+async function select(b){current=b;await show();loadList();}
+async function show(){
+  const {highlights}=await api('/api/highlights?body_id='+encodeURIComponent(current.id));
+  const main=$('#main');
+  main.replaceChildren(
+    el('div',{class:'rights'},'Only use images you have the right to use. Always fill in the credit and the source link for each image.'),
+    el('h2',{},current.name||current.id,el('span',{class:'muted'},'  '+current.id)),
+    ...highlights.map((h,i)=>card(h,i,highlights)),
+    addForm());
+}
+function card(h,i,all){
+  const f={};const field=(k,label,cls='')=>{const inp=k==='caption'?el('textarea',{rows:2,value:h[k]}):el('input',{type:'text',value:h[k]});f[k]=inp;return el('label',{class:cls},label,inp);};
+  const save=async()=>{const body={enabled:en.checked};for(const k in f)body[k]=f[k].value;
+    await api('/api/highlights/'+h.id,{method:'PATCH',body:JSON.stringify(body)});toast('Saved');await show();};
+  const en=el('input',{type:'checkbox'});en.checked=h.enabled;en.onchange=save;
+  const move=async d=>{const ids=all.map(x=>x.id);const j=i+d;if(j<0||j>=ids.length)return;[ids[i],ids[j]]=[ids[j],ids[i]];
+    await api('/api/highlights/reorder',{method:'POST',body:JSON.stringify({ids})});await show();};
+  return el('div',{class:'card'+(h.enabled?'':' off')},
+    el('a',{href:h.image_url,target:'_blank'},el('img',{src:h.thumbnail_url})),
+    el('div',{class:'fields'},field('title','Title','wide'),field('source_outlet','Outlet (NASA, ESA, BBC)'),field('credit','Credit / copyright'),
+      field('source_url','Source URL','wide'),field('caption','Caption','wide')),
+    el('div',{class:'actions'},el('label',{},en,' Enabled'),el('button',{onclick:save},'Save'),
+      el('button',{onclick:()=>move(-1),disabled:i===0},'↑ Up'),el('button',{onclick:()=>move(1),disabled:i===all.length-1},'↓ Down'),
+      el('button',{class:'danger',onclick:async()=>{if(confirm('Delete this image?')){await api('/api/highlights/'+h.id,{method:'DELETE'});await show();loadList();}}},'Delete')));
+}
+function addForm(){
+  const file=el('input',{type:'file',accept:'image/*'}),url=el('input',{type:'text',placeholder:'…or paste an image URL you have chosen'});
+  const t={};const mk=(k,p)=>t[k]=el('input',{type:'text',placeholder:p});
+  const go=async()=>{const fd=new FormData();fd.append('body_id',current.id);
+    if(file.files[0])fd.append('file',file.files[0]);else fd.append('image_url',url.value);
+    for(const k in t)fd.append(k,t[k].value);
+    if(!t.credit.value.trim()||!t.source_url.value.trim()&&!confirm('Credit or source link is empty. Add anyway?'))return;
+    try{await api('/api/highlights',{method:'POST',body:fd});toast('Added');await show();loadList();}catch(e){toast(e.message);}};
+  return el('div',{class:'add'},el('b',{},'Add an image'),
+    el('div',{class:'row'},file,url),
+    el('div',{class:'row'},mk('title','Title'),mk('source_outlet','Outlet (NASA, ESA, BBC)')),
+    el('div',{class:'row'},mk('credit','Credit / copyright (required)'),mk('source_url','Source URL')),
+    el('div',{class:'row'},mk('caption','Caption')),
+    el('button',{onclick:go},'Add image'));
+}
+$('#export').onclick=async()=>{try{const r=await api('/api/export',{method:'POST'});
+  toast(`Exported ${r.highlights} image(s) for ${r.bodies} body(ies) to ${r.path}`+(r.missing_files.length?` (missing files: ${r.missing_files.length})`:''));}catch(e){toast(e.message);}};
+loadList();
+</script></body></html>
