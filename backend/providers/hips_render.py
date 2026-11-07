@@ -5,16 +5,22 @@ download only the tiles needed (in parallel, cached), and sample them (nearest n
 """
 import io
 import math
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import astropy.units as u
 import numpy as np
 from astropy.wcs import WCS
 from astropy_healpix import lonlat_to_healpix
-from django.core.cache import cache
+from django.conf import settings
+from django.core.cache import caches
 from PIL import Image
 
 from config.http import ExternalServiceError, http_get
+from config.images import open_image
+
+cache = caches["images"]      # tiles are bulky; keep them out of the default pool
+_render_slots = threading.BoundedSemaphore(settings.MAX_CONCURRENT_RENDERS)
 
 TILE_WIDTH = 512
 MAX_TILES = 96               # drop an order rather than download more tiles than this
@@ -87,7 +93,7 @@ def _fetch_tile(base_url, order, tile, ext="jpg") -> np.ndarray | None:
         cache.set(key, data)
     if not data:
         return None
-    return np.asarray(Image.open(io.BytesIO(data)).convert("RGBA"))
+    return np.asarray(open_image(data).convert("RGBA"))
 
 
 def render(base_url, max_order, ra, dec, fov_deg, rotation_deg, width_px, height_px) -> bytes:
@@ -101,8 +107,14 @@ def render(base_url, max_order, ra, dec, fov_deg, rotation_deg, width_px, height
     return buf.getvalue()
 
 
-def sample(base_url, max_order, ra, dec, fov_deg, rotation_deg, width_px, height_px,
-           ext="jpg", tolerate_missing=False) -> tuple[np.ndarray, np.ndarray, bool]:
+def sample(*args, **kwargs) -> tuple[np.ndarray, np.ndarray, bool]:
+    """See _sample. At most MAX_CONCURRENT_RENDERS run at once, to bound memory use."""
+    with _render_slots:
+        return _sample(*args, **kwargs)
+
+
+def _sample(base_url, max_order, ra, dec, fov_deg, rotation_deg, width_px, height_px,
+            ext="jpg", tolerate_missing=False) -> tuple[np.ndarray, np.ndarray, bool]:
     """Sample a HiPS survey onto the output grid.
 
     Returns (rgb uint8 HxWx3, has_data bool HxW, any tile found). Pixels count as data when

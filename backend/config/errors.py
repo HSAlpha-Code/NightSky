@@ -1,9 +1,14 @@
 """Uniform API errors: {"error": {"code": ..., "message": ..., "details": ...}}."""
+import logging
+
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
+log = logging.getLogger(__name__)
+
+INTERNAL_ERROR = "INTERNAL_ERROR"
 SOLVE_FAILED = "SOLVE_FAILED"
 PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
 NO_COVERAGE = "NO_COVERAGE"
@@ -34,7 +39,10 @@ def api_exception_handler(exc, context):
         return Response(error_body(exc.code, exc.message, exc.details), status=exc.http_status)
     response = exception_handler(exc, context)
     if response is None:
-        return None
+        # Unhandled bug: keep the JSON envelope instead of Django's HTML 500 page.
+        log.exception("unhandled error in API view", exc_info=exc)
+        return Response(error_body(INTERNAL_ERROR, "Something went wrong. Please try again."),
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     if isinstance(exc, ValidationError):
         response.data = error_body(INVALID_REQUEST, "Invalid request.", response.data)
     else:

@@ -23,7 +23,8 @@ class Hips2FitsProvider(ImageProvider):
 
     def __init__(self, key: str, hips_id: str, name: str, description: str, wavelength: str,
                  coverage: str = "all-sky", min_dec: float = -90.0, credit: str = "",
-                 mirror: str = "", mirror_max_order: int = 9):
+                 mirror: str = "", mirror_max_order: int = 9,
+                 max_fov_deg: float | None = None):
         self.key = key
         self.hips_id = hips_id
         self.name = name
@@ -35,8 +36,11 @@ class Hips2FitsProvider(ImageProvider):
         self.credit = credit or f"{name} via CDS hips2fits (Strasbourg)"
         self.mirror = mirror                  # HiPS base URL of a copy outside CDS, or ""
         self.mirror_max_order = mirror_max_order
+        self.max_fov_deg = max_fov_deg        # None = any field size
 
     def supports(self, ra: float, dec: float, fov_deg: float | None = None) -> bool:
+        if self.max_fov_deg is not None and fov_deg is not None and fov_deg > self.max_fov_deg:
+            return False
         return dec >= self.min_dec
 
     def fetch_cutout(self, ra, dec, fov_deg, rotation_deg, width_px, height_px) -> bytes:

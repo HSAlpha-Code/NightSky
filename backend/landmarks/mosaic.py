@@ -18,6 +18,7 @@ from django.conf import settings
 from PIL import Image
 from scipy.ndimage import binary_erosion, gaussian_filter, white_tophat
 
+from config.images import open_image
 from providers.hips_render import HipsRenderError, output_wcs, sample
 
 log = logging.getLogger(__name__)
@@ -169,7 +170,7 @@ def render(mission: str, ra: float, dec: float, fov_deg: float, size_px: int,
         return None
     bg = None
     if background:
-        bg = np.asarray(Image.open(io.BytesIO(background)).convert("RGB")
+        bg = np.asarray(open_image(background).convert("RGB")
                         .resize((size_px, size_px)))
     image, coverage = compose(found, bg, (size_px, size_px), TINTS[mission])
     if coverage < MIN_COVERAGE:

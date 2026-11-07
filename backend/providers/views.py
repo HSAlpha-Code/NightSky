@@ -1,7 +1,10 @@
 from django.conf import settings
 from django.http import HttpResponse
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, throttle_classes
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
+
+from config.throttles import HeavyRateThrottle
 
 from .registry import all_providers
 from .serializers import ProviderSerializer, SkyImageRequestSerializer
@@ -15,6 +18,7 @@ def providers(request):
 
 
 @api_view(["POST"])
+@throttle_classes([AnonRateThrottle, HeavyRateThrottle])
 def sky_image(request):
     s = SkyImageRequestSerializer(data=request.data)
     s.is_valid(raise_exception=True)
@@ -23,13 +27,13 @@ def sky_image(request):
                            d["provider"] or None, d["width"], d["height"])
     resp = HttpResponse(result.data, content_type="image/jpeg")
     resp["X-Provider"] = result.provider.key
-    resp["X-Provider-Name"] = result.provider.name
+    resp["X-Provider-Name"] = _ascii(result.provider.name)
     resp["X-Credit"] = _ascii(result.provider.credit)
     resp["X-Fallback-Used"] = "true" if result.fallback_used else "false"
     if result.fallback_used:
         resp["X-Fallback-Reason"] = result.fallback_reason
         resp["X-Fallback-Message"] = _ascii(result.message)
-    resp["Cache-Control"] = "public, max-age=86400"
+    resp["Cache-Control"] = "no-store"   # POST responses are never reused by browsers/CDNs
     return resp
 
 

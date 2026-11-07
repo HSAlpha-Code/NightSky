@@ -7,16 +7,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'api_client.dart';
 import 'models.dart';
 import 'photo_utils.dart';
+import 'settings.dart';
 
-/// Default backend: the Android emulator's alias for the host machine. Change it in Settings
-/// (e.g. http://192.168.1.20:8000) when running on a real phone.
-const defaultServerUrl = String.fromEnvironment('SERVER_URL', defaultValue: 'http://10.0.2.2:8000');
-
+/// The backend address: what the user saved in Settings, else [defaultServerUrl].
 class ServerUrlNotifier extends Notifier<String> {
   @override
-  String build() => defaultServerUrl;
+  String build() => ref.watch(settingsProvider.select((s) => s.serverUrl)) ?? defaultServerUrl;
 
-  void set(String url) => state = url.trim();
+  void set(String url) => ref.read(settingsProvider.notifier).setServerUrl(url);
 }
 
 final serverUrlProvider = NotifierProvider<ServerUrlNotifier, String>(ServerUrlNotifier.new);

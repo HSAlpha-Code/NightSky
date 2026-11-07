@@ -36,9 +36,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _saveAndTest() async {
     final url = _controller.text.trim();
-    final uri = Uri.tryParse(url);
-    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
-      setState(() => _status = 'Enter a full address, e.g. http://192.168.1.20:8000');
+    final problem = validateServerUrl(url);
+    if (problem != null) {
+      setState(() => _status = problem);
       return;
     }
     setState(() {
@@ -126,7 +126,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         Align(
           alignment: Alignment.centerLeft,
           child: TextButton.icon(
-            onPressed: s == const AppSettings() ? null : notifier.reset,
+            onPressed: s.copyWith(clearServerUrl: true) == const AppSettings() ? null : notifier.reset,
             icon: const Icon(Icons.restore),
             label: const Text('Reset to defaults'),
           ),
@@ -140,7 +140,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           autocorrect: false,
           decoration: const InputDecoration(
             labelText: 'Server address',
-            helperText: 'Emulator: http://10.0.2.2:8000 · Phone: http://<computer-ip>:8000',
+            helperText: 'Default: $defaultServerUrl · Emulator: $legacyDefaultServerUrl',
             border: OutlineInputBorder(),
           ),
           onSubmitted: (_) => _saveAndTest(),

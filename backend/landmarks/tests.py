@@ -1,7 +1,7 @@
 import base64
 from unittest.mock import patch
 
-from django.core.cache import cache
+from django.core.cache import cache, caches
 from django.test import SimpleTestCase, override_settings
 from rest_framework.test import APIClient
 
@@ -169,6 +169,7 @@ class QueryTests(SimpleTestCase):
 class MastTests(SimpleTestCase):
     def setUp(self):
         cache.clear()
+        caches['images'].clear()
 
     def test_pick_best_prefers_jwst_then_exposure_and_skips_darks(self):
         rows = [
@@ -221,6 +222,7 @@ class MastTests(SimpleTestCase):
 class EndpointTests(SimpleTestCase):
     def setUp(self):
         cache.clear()
+        caches['images'].clear()
         self.client = APIClient()
         patcher = patch.object(catalog_mod, "_catalog", small_catalog())
         patcher.start()

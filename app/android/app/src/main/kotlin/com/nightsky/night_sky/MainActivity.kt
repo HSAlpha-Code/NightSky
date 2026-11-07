@@ -51,6 +51,14 @@ class MainActivity : FlutterActivity() {
                     prefs.edit().putString("settings", call.arguments as? String).apply()
                     result.success(null)
                 }
+                // Keyed strings for caches (e.g. the curated-highlights index).
+                "loadKey" -> result.success(
+                    prefs.getString("cache_" + (call.arguments as String), null))
+                "saveKey" -> {
+                    val args = call.arguments as Map<*, *>
+                    prefs.edit().putString("cache_" + args["key"], args["value"] as? String).apply()
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }

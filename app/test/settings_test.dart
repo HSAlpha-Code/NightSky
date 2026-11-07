@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sky/main.dart';
 import 'package:night_sky/screens/settings_screen.dart';
 import 'package:night_sky/settings.dart';
+import 'package:night_sky/state.dart';
 import 'package:night_sky/widgets/camera_hints.dart';
 
 ProviderContainer _container(MemorySettingsStore store) {
@@ -133,5 +134,69 @@ void main() {
     expect(find.text('Alt +62° · N 0° · compass'), findsOneWidget);
     await show(const PointingReadout(altitudeDeg: -12, azimuthDeg: 225, usingGyroscope: true));
     expect(find.text('Alt −12° (below horizon) · SW 225° · gyro'), findsOneWidget);
+  });
+
+  group('server address', () {
+    test('the default is the hosted backend', () {
+      expect(defaultServerUrl, 'https://nightsky-backend.vercel.app');
+      final c = _container(MemorySettingsStore());
+      expect(c.read(serverUrlProvider), defaultServerUrl);
+    });
+
+    test('a fresh install, or one that never changed it, gets the new default', () async {
+      final c = _container(MemorySettingsStore(jsonEncode(const AppSettings().toJson())));
+      await Future<void>.delayed(Duration.zero);
+      expect(c.read(serverUrlProvider), defaultServerUrl);
+    });
+
+    test('a saved custom address is kept', () async {
+      final c = _container(MemorySettingsStore(
+          jsonEncode({'serverUrl': 'http://192.168.1.20:8000', 'fontSize': 'large'})));
+      c.listen(serverUrlProvider, (_, _) {});
+      await Future<void>.delayed(Duration.zero);
+      expect(c.read(serverUrlProvider), 'http://192.168.1.20:8000');
+      expect(c.read(settingsProvider).fontSize, FontSize.large);
+    });
+
+    test('migration: the old default stored explicitly moves to the new default', () {
+      for (final old in [legacyDefaultServerUrl, '$legacyDefaultServerUrl/', 'HTTP://10.0.2.2:8000/api']) {
+        expect(AppSettings.fromJson({'serverUrl': old}).serverUrl, isNull, reason: old);
+      }
+      // ...but only that one: any other address stays.
+      expect(AppSettings.fromJson({'serverUrl': 'http://10.0.2.2:9000'}).serverUrl,
+          'http://10.0.2.2:9000');
+      expect(AppSettings.fromJson({'serverUrl': 'https://my.example.org'}).serverUrl,
+          'https://my.example.org');
+    });
+
+    test('malformed stored addresses are dropped', () {
+      for (final bad in ['', 'nonsense', 'ftp://host', 'http://', 42]) {
+        expect(AppSettings.fromJson({'serverUrl': bad}).serverUrl, isNull, reason: '$bad');
+      }
+    });
+
+    test('saving persists; saving the default clears it; reset keeps the address', () async {
+      final store = MemorySettingsStore();
+      final c = _container(store);
+      c.listen(serverUrlProvider, (_, _) {});
+      c.read(serverUrlProvider.notifier).set(' https://my.example.org ');
+      expect(c.read(serverUrlProvider), 'https://my.example.org');
+      expect(jsonDecode(store.value!)['serverUrl'], 'https://my.example.org');
+
+      c.read(settingsProvider.notifier).reset();
+      expect(c.read(serverUrlProvider), 'https://my.example.org');
+
+      c.read(serverUrlProvider.notifier).set(defaultServerUrl);
+      expect(jsonDecode(store.value!).containsKey('serverUrl'), isFalse);
+      expect(c.read(serverUrlProvider), defaultServerUrl);
+    });
+
+    test('validation', () {
+      expect(validateServerUrl('https://nightsky-backend.vercel.app'), isNull);
+      expect(validateServerUrl(' http://192.168.1.20:8000 '), isNull);
+      for (final bad in ['', 'localhost:8000', 'nightsky', 'ftp://x.org', 'https://', 'http://a b']) {
+        expect(validateServerUrl(bad), isNotNull, reason: bad);
+      }
+    });
   });
 }

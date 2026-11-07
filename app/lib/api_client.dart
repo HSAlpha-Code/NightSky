@@ -5,6 +5,14 @@ import 'package:dio/dio.dart';
 
 import 'models.dart';
 
+/// Answer to a conditional GET: [json] is null when the server said 304 (unchanged).
+class ConditionalJson {
+  const ConditionalJson(this.json, this.etag);
+
+  final Map<String, dynamic>? json;
+  final String? etag;
+}
+
 /// Thin client for the Django backend.
 class ApiClient {
   ApiClient(String baseUrl, {Dio? dio})
@@ -116,6 +124,26 @@ class ApiClient {
           caption: (j['caption'] ?? '') as String,
           fovDeg: (j['fov'] as num?)?.toDouble(),
         );
+      });
+
+  /// `GET /api/curated/index/`: bodies that have curated highlights. Pass the stored [etag]
+  /// to avoid downloading an unchanged index.
+  Future<ConditionalJson> curatedIndex({String? etag}) => _conditional('/curated/index/', etag);
+
+  /// `GET /api/curated/<id>/`: the highlights (image URLs, captions, credit) of one body.
+  Future<ConditionalJson> curatedBody(String bodyId, {String? etag}) =>
+      _conditional('/curated/${Uri.encodeComponent(bodyId)}/', etag);
+
+  Future<ConditionalJson> _conditional(String path, String? etag) => _guard(() async {
+        final resp = await _dio.get<Map<String, dynamic>>(
+          path,
+          options: Options(
+            headers: {if (etag != null) 'If-None-Match': etag},
+            validateStatus: (s) => s == 200 || s == 304,
+          ),
+        );
+        if (resp.statusCode == 304) return ConditionalJson(null, etag);
+        return ConditionalJson(resp.data, resp.headers.value('etag'));
       });
 
   Future<T> _guard<T>(Future<T> Function() call) async {

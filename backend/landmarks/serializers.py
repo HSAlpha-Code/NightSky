@@ -12,7 +12,7 @@ class LandmarksQuerySerializer(serializers.Serializer):
 
 class LandmarkDetailQuerySerializer(serializers.Serializer):
     id = serializers.CharField(max_length=64)
-    provider = serializers.CharField(required=False, allow_blank=True, default="")
+    provider = serializers.CharField(required=False, allow_blank=True, default="", max_length=64)
     # auto = best available (JWST, then Hubble, then survey); or force one point of view.
     view = serializers.ChoiceField(choices=["auto", "jwst", "hst", "survey"], required=False,
                                    default="auto")

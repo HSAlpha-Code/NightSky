@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from django.core.cache import cache
+from django.core.cache import cache, caches
 from django.test import SimpleTestCase
 from rest_framework.test import APIClient
 
@@ -14,6 +14,7 @@ JPEG = b"\xff\xd8fake-jpeg"
 class ApiTestCase(SimpleTestCase):
     def setUp(self):
         cache.clear()
+        caches['images'].clear()
         self.client = APIClient()
 
 

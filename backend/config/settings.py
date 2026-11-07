@@ -38,7 +38,10 @@ def env_bool(key: str, default: bool = False) -> bool:
 SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-insecure-key-change-me")
 # Debug is on for local development and off on Vercel unless DJANGO_DEBUG says otherwise.
 DEBUG = env_bool("DJANGO_DEBUG", not ON_VERCEL)
-ALLOWED_HOSTS = [h.strip() for h in env("DJANGO_ALLOWED_HOSTS", "*").split(",") if h.strip()]
+# Wildcard only for local development; deployments must be explicit (default: Vercel domains).
+ALLOWED_HOSTS = [h.strip() for h in
+                 env("DJANGO_ALLOWED_HOSTS", "*" if DEBUG else ".vercel.app").split(",")
+                 if h.strip()]
 if ON_VERCEL and not DEBUG and SECRET_KEY.startswith("dev-insecure"):
     raise RuntimeError("Set the DJANGO_SECRET_KEY environment variable in Vercel.")
 if not DEBUG:
@@ -59,12 +62,14 @@ INSTALLED_APPS = [
     "providers",
     "solver",
     "landmarks",
+    "curated",
 ]
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "config.middleware.SecurityHeadersMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -96,33 +101,63 @@ REST_FRAMEWORK = {
     "UNAUTHENTICATED_USER": None,
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "EXCEPTION_HANDLER": "config.errors.api_exception_handler",
+    "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle"],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": env("THROTTLE_RATE_ANON", "120/min"),
+        # sky-image, solve and landmark-detail: expensive renders / upstream fan-out.
+        "heavy": env("THROTTLE_RATE_HEAVY", "20/min"),
+    },
+    # Vercel sets X-Forwarded-For to the real client IP; without a trusted proxy count the
+    # header is client-controlled and would let callers dodge the limit.
+    "NUM_PROXIES": 1 if ON_VERCEL else None,
 }
 
-# Uploaded photos (downscaled on the phone to ~1600px) stay well below this.
-DATA_UPLOAD_MAX_MEMORY_SIZE = 15 * 1024 * 1024
-FILE_UPLOAD_MAX_MEMORY_SIZE = 15 * 1024 * 1024
+# Uploaded photos (downscaled on the phone to ~1600px) stay well below this. Vercel rejects
+# bodies over ~4.5 MB itself (with a non-JSON error), so enforce a limit just under that.
+MAX_UPLOAD_BYTES = 4 * 1024 * 1024
+# Images above this many pixels are rejected before decoding (decompression-bomb guard).
+MAX_IMAGE_PIXELS = int(env("MAX_IMAGE_PIXELS", str(64_000_000)))
+# Same guard for images fetched from upstream services (tiles, cutouts, mosaics).
+MAX_UPSTREAM_IMAGE_PIXELS = int(env("MAX_UPSTREAM_IMAGE_PIXELS", str(16_000_000)))
+# Largest /api/sky-image render (width x height). A 3000x3000 render peaked at ~1.1 GB.
+MAX_RENDER_PIXELS = int(env("MAX_RENDER_PIXELS", str(3_000_000)))
+# Local HiPS renders allowed at once per instance (each holds several large arrays).
+MAX_CONCURRENT_RENDERS = int(env("MAX_CONCURRENT_RENDERS", "2"))
+DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_BYTES
+FILE_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_BYTES
 
 # --- Cache ---
 _cache_backend = env("CACHE_BACKEND", "locmem")
 _cache_timeout = int(env("CACHE_TIMEOUT_SECONDS", "86400"))
+# Two pools so a sky-image workload (large JPEGs, HiPS tiles) can't evict landmark details,
+# MAST results and the provider-down flags, and vice versa.
 if _cache_backend == "file":
-    CACHES = {"default": {
-        "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
-        "LOCATION": env("CACHE_LOCATION", str(BASE_DIR / ".cache")),
-        "TIMEOUT": _cache_timeout,
-    }}
+    _cache_dir = env("CACHE_LOCATION", str(BASE_DIR / ".cache"))
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+            "LOCATION": _cache_dir, "TIMEOUT": _cache_timeout},
+        "images": {
+            "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+            "LOCATION": _cache_dir + "_images", "TIMEOUT": _cache_timeout},
+    }
 elif _cache_backend == "redis":
-    CACHES = {"default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": env("CACHE_LOCATION", "redis://localhost:6379/0"),
-        "TIMEOUT": _cache_timeout,
-    }}
+    _redis = {"BACKEND": "django.core.cache.backends.redis.RedisCache",
+              "LOCATION": env("CACHE_LOCATION", "redis://localhost:6379/0"),
+              "TIMEOUT": _cache_timeout}
+    CACHES = {"default": _redis, "images": {**_redis, "KEY_PREFIX": "images"}}
 else:
-    CACHES = {"default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "TIMEOUT": _cache_timeout,
-        "OPTIONS": {"MAX_ENTRIES": 500},
-    }}
+    # Entries can be ~800 KB images; the entry counts keep each pool's RAM bounded.
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "default", "TIMEOUT": _cache_timeout,
+            "OPTIONS": {"MAX_ENTRIES": 150}},
+        "images": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "images", "TIMEOUT": _cache_timeout,
+            "OPTIONS": {"MAX_ENTRIES": 150}},
+    }
 
 # --- External services ---
 HTTP_TIMEOUT_SECONDS = float(env("HTTP_TIMEOUT_SECONDS", "25"))
@@ -155,8 +190,19 @@ MAST_URL = env("MAST_URL", "https://mast.stsci.edu/api/v0/invoke")
 # background threads and are cached for 30 days, so only the first view of a field waits.
 MAST_TIMEOUT_SECONDS = float(env("MAST_TIMEOUT_SECONDS", "40"))
 MAST_WORKERS = int(env("MAST_WORKERS", "4"))
+# Cap on queued + running background lookups; further landmarks report "pending" until a slot frees.
+MAST_MAX_PENDING = int(env("MAST_MAX_PENDING", "8"))
 # ESA ESASky HiPS: all public Hubble and JWST imaging, already stitched into sky tiles.
 ESASKY_HIPS_URL = env("ESASKY_HIPS_URL", "https://cdn.skies.esac.esa.int")
+
+# --- Curated Cosmic Highlights ---
+# Read-only content. On Vercel it comes from a bundle shipped with the deployment
+# (curated_bundle/manifest.json + images/, produced by the local curator tool's export);
+# locally it can come from the database + CURATED_MEDIA_ROOT. "auto" = bundle if present.
+CURATED_SOURCE = env("CURATED_SOURCE", "bundle" if ON_VERCEL else "auto")
+CURATED_BUNDLE_DIR = Path(env("CURATED_BUNDLE_DIR", str(BASE_DIR / "curated_bundle")))
+CURATED_MEDIA_ROOT = Path(env("CURATED_MEDIA_ROOT",
+                              str(BASE_DIR.parent / "local_tools" / "curator" / "media")))
 
 PLATE_SOLVER = env("PLATE_SOLVER", "tetra3")
 TETRA3_DATABASE = env("TETRA3_DATABASE", "")

@@ -47,6 +47,45 @@ enum FontSize {
   final double scale;
 }
 
+/// Backend used when the user never entered an address. Override at build time with
+/// `--dart-define=SERVER_URL=...`.
+const defaultServerUrl =
+    String.fromEnvironment('SERVER_URL', defaultValue: 'https://nightsky-backend.vercel.app');
+
+/// The default before the hosted backend existed (Android emulator -> host machine). It was
+/// never meant to be a user choice: a stored value equal to it is dropped on load so the
+/// user moves to [defaultServerUrl]. Also used as the example in the Settings help text.
+const legacyDefaultServerUrl = 'http://10.0.2.2:8000';
+
+/// Whether [a] and [b] are the same address, ignoring case and a trailing "/" or "/api".
+bool sameServerUrl(String a, String b) {
+  String norm(String u) {
+    var x = u.trim().toLowerCase();
+    while (x.endsWith('/')) {
+      x = x.substring(0, x.length - 1);
+    }
+    return x.endsWith('/api') ? x.substring(0, x.length - 4) : x;
+  }
+
+  return norm(a) == norm(b);
+}
+
+// Letters, digits, dots and dashes (hostnames, IPv4), or an IPv6 literal (contains ':').
+final _validHost = RegExp(r'^([A-Za-z0-9._-]+|[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*)$');
+
+/// Null if [url] is a well-formed http(s) address, otherwise a message for the user.
+String? validateServerUrl(String url) {
+  final uri = Uri.tryParse(url.trim());
+  if (uri == null ||
+      !(uri.scheme == 'http' || uri.scheme == 'https') ||
+      !_validHost.hasMatch(uri.host) ||
+      uri.hasQuery ||
+      uri.hasFragment) {
+    return 'Enter a full address starting with https:// (or http://), e.g. $defaultServerUrl';
+  }
+  return null;
+}
+
 @immutable
 class AppSettings {
   const AppSettings({
@@ -56,6 +95,7 @@ class AppSettings {
     this.autoCapture = false,
     this.showPointingReadout = true,
     this.fontSize = FontSize.normal,
+    this.serverUrl,
   });
 
   /// Off (default): orientation from accelerometer + compass only, like Sky Map's
@@ -71,6 +111,9 @@ class AppSettings {
   final bool showPointingReadout;
   final FontSize fontSize;
 
+  /// Address the user saved in Settings; null = never changed, use [defaultServerUrl].
+  final String? serverUrl;
+
   AppSettings copyWith({
     bool? useGyroscope,
     SensorSmoothing? smoothing,
@@ -78,6 +121,8 @@ class AppSettings {
     bool? autoCapture,
     bool? showPointingReadout,
     FontSize? fontSize,
+    String? serverUrl,
+    bool clearServerUrl = false,
   }) =>
       AppSettings(
         useGyroscope: useGyroscope ?? this.useGyroscope,
@@ -86,6 +131,7 @@ class AppSettings {
         autoCapture: autoCapture ?? this.autoCapture,
         showPointingReadout: showPointingReadout ?? this.showPointingReadout,
         fontSize: fontSize ?? this.fontSize,
+        serverUrl: clearServerUrl ? null : serverUrl ?? this.serverUrl,
       );
 
   Map<String, dynamic> toJson() => {
@@ -95,6 +141,7 @@ class AppSettings {
         'autoCapture': autoCapture,
         'showPointingReadout': showPointingReadout,
         'fontSize': fontSize.name,
+        if (serverUrl != null) 'serverUrl': serverUrl,
       };
 
   /// Unknown or missing values fall back to the defaults (settings from older versions).
@@ -110,7 +157,20 @@ class AppSettings {
       autoCapture: flag('autoCapture', d.autoCapture),
       showPointingReadout: flag('showPointingReadout', d.showPointingReadout),
       fontSize: pick(FontSize.values, j['fontSize'], d.fontSize),
+      serverUrl: _storedServerUrl(j['serverUrl']),
     );
+  }
+
+  /// Migration: only a valid, custom address is kept. A stored legacy default (or the
+  /// current default) becomes null, so those users follow the app's default.
+  static String? _storedServerUrl(Object? raw) {
+    if (raw is! String) return null;
+    final url = raw.trim();
+    if (url.isEmpty || validateServerUrl(url) != null) return null;
+    if (sameServerUrl(url, legacyDefaultServerUrl) || sameServerUrl(url, defaultServerUrl)) {
+      return null;
+    }
+    return url;
   }
 
   @override
@@ -196,7 +256,14 @@ class SettingsNotifier extends Notifier<AppSettings> {
     unawaited(ref.read(settingsStoreProvider).save(jsonEncode(state.toJson())));
   }
 
-  void reset() => update((_) => const AppSettings());
+  /// Back to defaults; the server address is kept (it has its own control).
+  void reset() => update((s) => AppSettings(serverUrl: s.serverUrl));
+
+  /// Saves the server address; the default (or empty) clears it.
+  void setServerUrl(String? url) => update((s) {
+        final isDefault = url == null || url.trim().isEmpty || sameServerUrl(url, defaultServerUrl);
+        return isDefault ? s.copyWith(clearServerUrl: true) : s.copyWith(serverUrl: url.trim());
+      });
 }
 
 final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(SettingsNotifier.new);

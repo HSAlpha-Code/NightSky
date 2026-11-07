@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import httpx
 import numpy as np
-from django.core.cache import cache
+from django.core.cache import cache, caches
 from django.test import SimpleTestCase, override_settings
 
 from config.http import ExternalServiceError, http_get
@@ -54,6 +54,7 @@ def _cds_only():
 class Hips2FitsTests(SimpleTestCase):
     def setUp(self):
         cache.clear()  # don't inherit a "CDS down" flag from other tests
+        caches['images'].clear()
 
     @patch("providers.hips2fits.http_get", return_value=_resp())
     def test_fetch_cutout_params(self, mock_get):
@@ -79,6 +80,7 @@ class Hips2FitsTests(SimpleTestCase):
 class MirrorFallbackTests(SimpleTestCase):
     def setUp(self):
         cache.clear()
+        caches['images'].clear()
 
     @patch("providers.hips2fits.hips_render.render", return_value=b"\xff\xd8mirror")
     @patch("providers.hips2fits.http_get", side_effect=ExternalServiceError("timed out"))
@@ -109,6 +111,7 @@ class MirrorFallbackTests(SimpleTestCase):
 class DownFlagTests(SimpleTestCase):
     def setUp(self):
         cache.clear()
+        caches['images'].clear()
 
     @patch("providers.skyview.SkyViewProvider.fetch_cutout", return_value=b"\xff\xd8skyview")
     @patch("providers.hips2fits.hips_render.render", return_value=b"\xff\xd8mirror")

@@ -1,7 +1,10 @@
 import base64
 
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, throttle_classes
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
+
+from config.throttles import HeavyRateThrottle
 
 from .serializers import LandmarkDetailQuerySerializer, LandmarksQuerySerializer
 from .services import landmark_detail, landmarks_in_field
@@ -17,6 +20,7 @@ def landmarks(request):
 
 
 @api_view(["GET"])
+@throttle_classes([AnonRateThrottle, HeavyRateThrottle])
 def landmark_detail_view(request):
     s = LandmarkDetailQuerySerializer(data=request.query_params)
     s.is_valid(raise_exception=True)

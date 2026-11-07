@@ -20,7 +20,7 @@ PROVIDERS: list[ImageProvider] = [
                       mirror=MIRROR and f"{MIRROR}/AllWISEColor", mirror_max_order=8),
     Hips2FitsProvider("panstarrs_hips", "CDS/P/PanSTARRS/DR1/color-z-zg-g", "Pan-STARRS DR1 (HiPS)",
                       "Pan-STARRS DR1 colour composite via hips2fits.", "optical",
-                      coverage="dec > -30", min_dec=-30.0),
+                      coverage="dec > -30, fov <= 30 deg", min_dec=-30.0, max_fov_deg=30.0),
     SkyViewProvider("skyview_mellinger", ["Mellinger Red", "Mellinger Green", "Mellinger Blue"],
                     "Mellinger Color (SkyView)",
                     "Axel Mellinger's all-sky colour mosaic. Best for wide phone-camera fields.",

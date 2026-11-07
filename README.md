@@ -38,6 +38,21 @@ opens a close-up from Hubble, JWST or any survey.
 | `skyview_dss2_red` | DSS2 red via NASA SkyView | All-sky. |
 | `panstarrs` | Pan-STARRS cutout service (STScI) | Dec > −30°, fields ≤ 0.4°. |
 
+### Curated Cosmic Highlights
+A separate, hand-curated source: pre-rendered images (NASA, ESA, BBC, ...) attached to specific
+objects, with caption, outlet credit and a link to the original article. In the app it appears in
+a landmark's detail view **only for objects that have highlights** (decided from the downloaded
+index; if the object has none, or the index is unavailable, the option is hidden and the app falls
+back to the previous source). Several images per object are shown in a swipeable viewer with page
+dots; caption, credit and source link follow the current image. The backend serves stored files
+as-is and never contacts the outlet at request time.
+
+The content is managed with a local-only tool (gitignored; it exists only on the maintainer's
+machine, with its own instructions) and shipped to the backend as a read-only bundle
+(`backend/curated_bundle/`: `manifest.json` + `images/`) at deploy time. Without a bundle the
+endpoints simply return an empty index. `CURATED_SOURCE` = `auto` (default locally: bundle if
+present, else the `CuratedHighlight` table) / `bundle` (default on Vercel) / `db`.
+
 ### How to add an image source
 1. Write an adapter in `backend/providers/` that subclasses `ImageProvider` (`base.py`): set
    `key`, `name`, `description`, `wavelength`, `coverage`, `credit`, and implement
@@ -69,6 +84,12 @@ Useful: `manage.py cutout 83.82 -5.39 2.0 -o orion.jpg` (save a cutout),
 including the current IAU star names from the WGSN table on exopla.net), `manage.py test`.
 All settings are environment variables, listed in `backend/.env.example`.
 
+### Server address in the app
+The app talks to `https://nightsky-backend.vercel.app` by default. Change it in Settings (e.g.
+`http://192.168.1.20:8000`, or `http://10.0.2.2:8000` from the Android emulator); only a custom
+address is stored, so the default can follow future releases. Build-time default:
+`--dart-define=SERVER_URL=...`.
+
 ### App on a phone over USB
 ```powershell
 # backend running on 127.0.0.1:8000, phone connected with USB debugging on
@@ -86,6 +107,14 @@ Run `adb reverse` again after every reconnect. App tests: `flutter test`.
 | `POST /api/sky-image` | JSON `{ra, dec, fov, rotation?, provider?, width?, height?}` -> JPEG; headers `X-Provider`, `X-Credit`, `X-Fallback-Used`, `X-Fallback-Reason`, `X-Fallback-Message` |
 | `GET /api/landmarks?ra&dec&fov&rotation&aspect` | `{landmarks: [{id, name, type_label, magnitude, x, y, has_hires, ...}], pending}` |
 | `GET /api/landmark-detail?id&provider&view` | `view` = `auto`/`jwst`/`hst`/`survey` -> `{image_jpeg_base64, image_source, credit, caption, fov, landmark}` |
+
+| `GET /api/curated/index/` | Bodies that have at least one enabled highlight: `{version, updated_at, bodies: [{body_id, body_name, count}]}`. `body_id` is the landmark id. No image data. |
+| `GET /api/curated/<body_id>/` | `{body_id, body_name, version, highlights: [{id, title, image_url, thumbnail_url, source_outlet, source_url, credit, caption, ra, dec}]}`; 404 `NOT_FOUND` if none |
+| `GET /api/curated/image/<file>` | A stored image (or `_t.jpg` thumbnail), served as-is |
+
+The curated endpoints are public and read-only (other methods return 405). Both JSON endpoints send
+`ETag` and `Cache-Control: public, max-age=300, must-revalidate` and answer `If-None-Match` with
+`304`; the app uses this to avoid re-downloading an unchanged index.
 
 Errors are `{"error": {"code", "message"}}`: `SOLVE_FAILED` (422), `PROVIDER_UNAVAILABLE` (503),
 `NO_COVERAGE` (404), `INVALID_REQUEST` (400), `NOT_FOUND` (404), `CATALOG_UNAVAILABLE` (503).

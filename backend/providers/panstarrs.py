@@ -6,6 +6,7 @@ from django.conf import settings
 from PIL import Image
 
 from config.http import ExternalServiceError, http_get
+from config.images import open_image
 
 from .base import ImageProvider, ProviderError
 
@@ -71,13 +72,19 @@ def _parse_filenames(text: str) -> dict[str, str]:
     if not lines:
         return {}
     header = lines[0].split()
-    f_idx, n_idx = header.index("filter"), header.index("filename")
-    return {row.split()[f_idx]: row.split()[n_idx] for row in lines[1:] if row.strip()}
+    try:
+        f_idx, n_idx = header.index("filter"), header.index("filename")
+        return {row.split()[f_idx]: row.split()[n_idx] for row in lines[1:] if row.strip()}
+    except (ValueError, IndexError) as exc:   # upstream changed its table layout
+        raise ProviderError("Pan-STARRS returned an unexpected file list") from exc
 
 
 def _rotate_and_crop(data, fov_deg, rotation_deg, width_px, height_px, source_fov_deg):
     """Source image is north-up, east-left. Rotate so image-up has the requested position angle."""
-    img = Image.open(io.BytesIO(data)).convert("RGB")
+    try:
+        img = open_image(data).convert("RGB")
+    except ExternalServiceError as exc:
+        raise ProviderError(str(exc)) from exc
     # Rotating the picture clockwise by PA puts the direction at PA (east of north) at the top.
     img = img.rotate(-rotation_deg, resample=Image.BICUBIC, expand=False)
     scale = img.width / source_fov_deg              # px per degree

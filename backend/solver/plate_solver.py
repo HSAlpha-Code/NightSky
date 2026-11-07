@@ -43,7 +43,10 @@ def load_image(image_bytes: bytes) -> Image.Image:
 
     Works for 8-bit phone JPEGs and 16-bit TIFFs (PIL's "L" mode would clip 16-bit data).
     """
-    img = ImageOps.exif_transpose(Image.open(io.BytesIO(image_bytes)))
+    img = Image.open(io.BytesIO(image_bytes))   # lazy: reads the header only
+    if img.width * img.height > settings.MAX_IMAGE_PIXELS:
+        raise ValueError("Image has too many pixels.")
+    img = ImageOps.exif_transpose(img)
     if img.mode in ("I;16", "I;16B", "I;16L", "I", "F"):
         img = img.convert("F")
     else:
@@ -87,14 +90,15 @@ def _tetra3_instance():
 
 
 class Tetra3Solver(PlateSolver):
-    def solve(self, image_bytes, hint=None):
+    def solve(self, image, hint=None):
+        """image: raw bytes, or an image already prepared by load_image()."""
         hint = hint or SolveHint()
         try:
             t3 = _tetra3_instance()
         except (ImportError, OSError) as exc:  # not installed / database missing
             log.error("tetra3 unavailable, using phone sensors only: %s", exc)
             return None
-        img = load_image(image_bytes)
+        img = image if isinstance(image, Image.Image) else load_image(image)
         # A pixel straight above the centre gives the image "up" direction on the sky;
         # this avoids depending on tetra3's internal Roll convention.
         w, h = img.size

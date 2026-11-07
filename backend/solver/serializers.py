@@ -1,3 +1,4 @@
+from django.conf import settings
 from rest_framework import serializers
 
 
@@ -34,6 +35,11 @@ class SolveMetadataSerializer(serializers.Serializer):
 class SolveRequestSerializer(serializers.Serializer):
     image = serializers.FileField()
     metadata = serializers.JSONField(binary=True, required=False, default=dict)
+
+    def validate_image(self, value):
+        if value.size > settings.MAX_UPLOAD_BYTES:
+            raise serializers.ValidationError("Image is too large.")
+        return value
 
     def validate_metadata(self, value):
         s = SolveMetadataSerializer(data=value)

@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 
 from django.conf import settings
-from PIL import UnidentifiedImageError
+from PIL import Image, UnidentifiedImageError
 
 from config.errors import INVALID_REQUEST, SOLVE_FAILED, ApiError
 
@@ -35,9 +35,11 @@ def sensor_pointing(meta: dict) -> Pointing:
 
 def solve(image_bytes: bytes, meta: dict) -> dict:
     try:
-        load_image(image_bytes)  # validate early so a bad upload is a 400, not a solve failure
-    except (UnidentifiedImageError, OSError, ValueError) as exc:
-        raise ApiError(INVALID_REQUEST, "The uploaded file is not a readable image.") from exc
+        # Decoded once; validates early so a bad upload is a 400, not a solve failure.
+        image = load_image(image_bytes)
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise ApiError(INVALID_REQUEST,
+                       "The uploaded file is not a readable image, or is too large.") from exc
 
     pointing, sensor_problem = None, ""
     try:
@@ -49,7 +51,7 @@ def solve(image_bytes: bytes, meta: dict) -> dict:
     fov_hint = meta.get("fov_deg")
     hint = SolveHint(ra=pointing.ra if pointing else None, dec=pointing.dec if pointing else None,
                      fov=fov_hint)
-    result = get_solver().solve(image_bytes, hint)
+    result = get_solver().solve(image, hint)
     alt_az = {"alt": pointing.alt if pointing else None, "az": pointing.az if pointing else None}
 
     if result is not None:

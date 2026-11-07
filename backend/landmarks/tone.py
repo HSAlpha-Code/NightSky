@@ -11,6 +11,8 @@ import numpy as np
 from PIL import Image
 from scipy.ndimage import gaussian_filter
 
+from config.images import open_image
+
 BRIGHT = 200                 # 0..255 luminance counted as "bright"
 MAX_BRIGHT_FRACTION = 0.12   # over-exposed if more than this share of pixels is bright...
 MAX_MEDIAN = 150             # ...or the typical pixel is this bright
@@ -29,7 +31,7 @@ def is_overexposed(lum: np.ndarray) -> bool:
 def burnt_fraction(data: bytes) -> float:
     """Share of the image that is bright AND flat: saturated areas with no structure a tone
     curve could bring back (e.g. DSS2 over the core of M42 is ~100 %)."""
-    lum = np.asarray(Image.open(io.BytesIO(data)).convert("L"), np.float32)
+    lum = np.asarray(open_image(data).convert("L"), np.float32)
     detail = gaussian_filter(np.abs(lum - gaussian_filter(lum, 4.0)), 3.0)
     return float(((lum >= BRIGHT) & (detail < BURNT_DETAIL)).mean())
 
@@ -74,7 +76,7 @@ def _compress(rgb: np.ndarray, lum: np.ndarray) -> np.ndarray:
 
 def tame_jpeg(data: bytes) -> tuple[bytes, bool]:
     """JPEG in, JPEG out. Returns the original bytes when nothing needed changing."""
-    rgb = np.asarray(Image.open(io.BytesIO(data)).convert("RGB"))
+    rgb = np.asarray(open_image(data).convert("RGB"))
     out, changed = tame_array(rgb)
     if not changed:
         return data, False

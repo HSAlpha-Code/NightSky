@@ -6,6 +6,7 @@ result is cached. `status()` never blocks: it returns None while a lookup is sti
 import json
 import logging
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from django.conf import settings
@@ -29,7 +30,7 @@ NO_PREVIEW = "none"
 
 _pool: ThreadPoolExecutor | None = None
 _pool_lock = threading.Lock()
-_pending: set[str] = set()
+_pending: dict[str, float] = {}      # landmark id -> time the lookup was submitted
 
 
 def search_radius(size_arcmin: float | None) -> float:
@@ -101,7 +102,7 @@ def _run(landmark_id, ra, dec, radius):
         cache.set(_key(landmark_id), NO_PREVIEW, FAILED_TTL)
     finally:
         with _pool_lock:
-            _pending.discard(landmark_id)
+            _pending.pop(landmark_id, None)
 
 
 def _executor() -> ThreadPoolExecutor:
@@ -121,9 +122,14 @@ def status(landmark) -> dict | None | bool:
     if cached is not None:
         return False if cached == NO_PREVIEW else cached
     with _pool_lock:
-        if landmark.id in _pending:
+        # A lookup that outlived its own timeouts died (worker lost): forget it and retry.
+        now = time.monotonic()
+        stale = now - (2 * settings.MAST_TIMEOUT_SECONDS + 30)
+        for lid in [k for k, t in _pending.items() if t < stale]:
+            del _pending[lid]
+        if landmark.id in _pending or len(_pending) >= settings.MAST_MAX_PENDING:
             return None
-        _pending.add(landmark.id)
+        _pending[landmark.id] = now
     _executor().submit(_run, landmark.id, landmark.ra, landmark.dec,
                        search_radius(landmark.size_arcmin))
     return None

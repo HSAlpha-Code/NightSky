@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'curated.dart';
 import 'screens/camera_screen.dart';
 import 'settings.dart';
 
@@ -29,6 +30,9 @@ class NightSkyAppShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final fontScale = ref.watch(settingsProvider.select((s) => s.fontSize.scale));
+    // Download the curated-highlights index in the background (app start and whenever the
+    // server address changes). Never blocks anything; failures are silent.
+    ref.listen(curatedIndexProvider, (_, _) {});
     return MaterialApp(
       title: 'NightSky',
       debugShowCheckedModeBanner: false,

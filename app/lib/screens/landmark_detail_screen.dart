@@ -2,8 +2,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../curated.dart';
 import '../models.dart';
 import '../state.dart';
+import '../widgets/curated_viewer.dart';
 
 /// Second-level view: one landmark seen from several points of view (Webb, Hubble, surveys),
 /// plus basic facts and credit.
@@ -18,7 +20,11 @@ final landmarkDetailProvider = FutureProvider.autoDispose
 });
 
 /// Views offered for a landmark: best, Webb, Hubble (not for stars), then every survey.
-List<DetailView> detailViews(Landmark lm, ProviderCatalog? catalog, String? surveyKey) => [
+List<DetailView> detailViews(Landmark lm, ProviderCatalog? catalog, String? surveyKey,
+        {bool hasCurated = false}) =>
+    [
+      // Only offered when the downloaded index says this body has curated highlights.
+      if (hasCurated) const DetailView('curated', null, curatedSourceLabel),
       DetailView('auto', surveyKey, 'Best'),
       if (!lm.isStar) ...[
         DetailView('jwst', surveyKey, 'Webb'),
@@ -27,6 +33,26 @@ List<DetailView> detailViews(Landmark lm, ProviderCatalog? catalog, String? surv
       for (final p in catalog?.providers ?? const <SkyProviderInfo>[])
         DetailView('survey', p.key, p.name),
     ];
+
+/// The view the user last picked, and the last real survey/mosaic view before it. Kept across
+/// landmarks so a body without curated highlights falls back to the previous source.
+class DetailPreference {
+  const DetailPreference({this.view, this.source});
+
+  final DetailView? view;
+  final DetailView? source;
+}
+
+class DetailPreferenceNotifier extends Notifier<DetailPreference> {
+  @override
+  DetailPreference build() => const DetailPreference();
+
+  void choose(DetailView v) => state = DetailPreference(
+      view: v, source: v.view == 'curated' ? state.source : v);
+}
+
+final detailPreferenceProvider =
+    NotifierProvider<DetailPreferenceNotifier, DetailPreference>(DetailPreferenceNotifier.new);
 
 class LandmarkDetailScreen extends ConsumerStatefulWidget {
   const LandmarkDetailScreen({super.key, required this.landmark, this.providerKey});
@@ -41,43 +67,116 @@ class LandmarkDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _LandmarkDetailScreenState extends ConsumerState<LandmarkDetailScreen> {
-  late DetailView _view = DetailView('auto', widget.providerKey, 'Best');
+  /// What the user picked last (possibly "curated"), and the source to fall back to when
+  /// curated highlights are not available for this body.
+  late DetailView _view;
+  late DetailView _fallback;
+
+  @override
+  void initState() {
+    super.initState();
+    final pref = ref.read(detailPreferenceProvider);
+    final best = DetailView('auto', widget.providerKey, 'Best');
+    _view = pref.view ?? best;
+    _fallback = pref.source ?? best;
+  }
+
+  void _select(DetailView v) {
+    setState(() {
+      _view = v;
+      if (v.view != 'curated') _fallback = v;
+    });
+    ref.read(detailPreferenceProvider.notifier).choose(v);
+  }
 
   @override
   Widget build(BuildContext context) {
     final lm = widget.landmark;
+    final hasCurated = ref.watch(curatedIndexProvider.select((i) => i?.has(lm.id) ?? false));
+    // Curated selected but this body has none: show the previous/default source instead.
+    final view = _view.view == 'curated' && !hasCurated ? _fallback : _view;
+    final curated = view.view == 'curated';
     final catalog = ref.watch(providerCatalogProvider).value;
-    final views = detailViews(lm, catalog, widget.providerKey);
-    final args = (lm.id, _view);
-    final detail = ref.watch(landmarkDetailProvider(args));
+    final views = detailViews(lm, catalog, widget.providerKey, hasCurated: hasCurated);
+    final args = (lm.id, view);
+    // Curated images need none of the (slow) mosaic work.
+    final detail = curated ? null : ref.watch(landmarkDetailProvider(args));
     return Scaffold(
       appBar: AppBar(backgroundColor: Colors.black, title: Text(lm.name)),
       body: SafeArea(
         child: ListView(children: [
-          _ViewPicker(
-            views: views,
-            selected: _view,
-            onSelected: (v) => setState(() => _view = v),
-          ),
-          AspectRatio(
-            aspectRatio: 1,
-            child: detail.when(
-              skipLoadingOnReload: false,
-              data: (d) => InteractiveViewer(
-                key: ValueKey(_view),
-                maxScale: 8,
-                child: Image.memory(d.image, fit: BoxFit.contain, gaplessPlayback: true),
-              ),
-              loading: () => _Loading(view: _view),
-              error: (e, _) => _Error(
-                message: e is ApiException ? e.message : 'Could not load the image.',
-                onRetry: () => ref.invalidate(landmarkDetailProvider(args)),
+          _ViewPicker(views: views, selected: view, onSelected: _select),
+          if (curated)
+            _CuratedPanel(landmark: lm)
+          else if (detail != null) ...[
+            AspectRatio(
+              aspectRatio: 1,
+              child: detail.when(
+                skipLoadingOnReload: false,
+                data: (d) => InteractiveViewer(
+                  key: ValueKey(view),
+                  maxScale: 8,
+                  child: Image.memory(d.image, fit: BoxFit.contain, gaplessPlayback: true),
+                ),
+                loading: () => _Loading(view: view),
+                error: (e, _) => _Error(
+                  message: e is ApiException ? e.message : 'Could not load the image.',
+                  onRetry: () => ref.invalidate(landmarkDetailProvider(args)),
+                ),
               ),
             ),
-          ),
-          if (detail.value case final d? when !detail.isLoading) _ImageCredit(detail: d),
+            if (detail.value case final d? when !detail.isLoading) _ImageCredit(detail: d),
+          ],
           LandmarkFacts(landmark: lm),
         ]),
+      ),
+    );
+  }
+}
+
+/// The "Curated Cosmic Highlights" source: details are fetched when this opens.
+class _CuratedPanel extends ConsumerStatefulWidget {
+  const _CuratedPanel({required this.landmark});
+
+  final Landmark landmark;
+
+  @override
+  ConsumerState<_CuratedPanel> createState() => _CuratedPanelState();
+}
+
+class _CuratedPanelState extends ConsumerState<_CuratedPanel> {
+  @override
+  void initState() {
+    super.initState();
+    // A different body starts on its first image (providers can't change during build).
+    Future.microtask(() {
+      if (!mounted) return;
+      final id = widget.landmark.id;
+      if (ref.read(curatedPageProvider).bodyId != id) {
+        ref.read(curatedPageProvider.notifier).set(id, 0);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final id = widget.landmark.id;
+    final body = ref.watch(curatedBodyProvider(id));
+    return body.when(
+      loading: () => const AspectRatio(
+          aspectRatio: 4 / 3, child: Center(child: CircularProgressIndicator())),
+      error: (e, _) => AspectRatio(
+        aspectRatio: 4 / 3,
+        child: _Error(
+          message: e is ApiException ? e.message : 'Could not load the highlights.',
+          onRetry: () => ref.invalidate(curatedBodyProvider(id)),
+        ),
+      ),
+      data: (b) => CuratedViewer(
+        key: ValueKey(b.bodyId),
+        highlights: b.highlights,
+        initialPage: ref.read(curatedPageProvider.notifier).pageFor(id),
+        onPageChanged: (p) => ref.read(curatedPageProvider.notifier).set(id, p),
       ),
     );
   }
@@ -107,6 +206,7 @@ class _ViewPicker extends StatelessWidget {
                   switch (v.view) {
                     'jwst' || 'hst' => Icons.auto_awesome,
                     'auto' => Icons.star_outline,
+                    'curated' => Icons.auto_awesome_motion,
                     _ => Icons.public,
                   },
                   size: 16,

@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 
 from django.conf import settings
-from django.core.cache import cache
+from django.core.cache import cache, caches
 
 from config.errors import NO_COVERAGE, PROVIDER_UNAVAILABLE, ApiError
 
@@ -42,7 +42,8 @@ def _down_key(provider: ImageProvider) -> str:
 
 def _fetch(provider: ImageProvider, ra, dec, fov, rotation, width, height) -> bytes:
     key = cache_key(provider.key, ra, dec, fov, rotation, width, height)
-    data = cache.get(key)
+    image_cache = caches["images"]      # JPEGs live apart from small flags and landmark data
+    data = image_cache.get(key)
     if data is not None:
         return data
     if cache.get(_down_key(provider)):
@@ -52,7 +53,7 @@ def _fetch(provider: ImageProvider, ra, dec, fov, rotation, width, height) -> by
     except ProviderError:
         cache.set(_down_key(provider), True, settings.PROVIDER_DOWN_SECONDS)
         raise
-    cache.set(key, data)
+    image_cache.set(key, data)
     return data
 
 
