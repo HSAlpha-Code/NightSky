@@ -6,144 +6,125 @@ opens a close-up from Hubble, JWST or any survey.
 
 - `backend/`: Django REST API (plate solving, survey images, landmarks, Hubble/JWST mosaics)
 - `app/`: Flutter Android app
-
-**Deploying (Vercel + APK): see [DEPLOY.md](DEPLOY.md).**
+- `local_tools/curator/`: local-only tool for managing curated highlights (never deployed)
 
 ## How it works
-1. The app takes a photo and records GPS, time, the phone orientation and the camera's field of
-   view. By default the orientation comes from the accelerometer + compass only (no gyroscope,
-   like Sky Map's "legacy sensors"), so tilting up never flips to "below the horizon".
-   Settings > Sensors can enable the gyroscope-fused sensor and set smoothing, steadiness,
-   auto-capture and an altitude/heading readout; Settings > Display sets the font size.
-2. `POST /api/solve`: the backend turns the orientation into a sky position (astropy, magnetic
-   declination via pygeomag), then refines it by plate-solving the stars (tetra3). With too few
-   stars it returns the sensor position marked *approximate*.
-3. `POST /api/sky-image`: a survey cutout of that field from the chosen image source. If the
-   source doesn't cover the position or is down, another one is used and the app says so.
-4. `GET /api/landmarks`: Messier/NGC objects and bright named stars in the field (OpenNGC + IAU
-   star names), drawn as markers. Gold circles have Hubble/JWST data (checked via MAST).
-   Pinch the result image to zoom in on any spot; markers keep their size.
-5. `GET /api/landmark-detail`: the second-level view. *Best* = JWST, then Hubble, then a survey.
-   Hubble/JWST mosaics are stitched from ESA ESASky tiles, so neighbouring frames fill the field,
-   and coloured with a ground-based survey. Over-exposed images get their highlights compressed.
+1. The app sends the photo plus GPS, time, phone orientation and camera field of view.
+2. `POST /api/solve` converts the orientation to a sky position (astropy, pygeomag), then refines
+   it by plate-solving the stars (tetra3). With too few stars it returns the sensor position,
+   marked *approximate*.
+3. `POST /api/sky-image` returns a survey cutout of that field. If the chosen source is down or
+   lacks coverage, another is used and the app says so.
+4. `GET /api/landmarks` lists Messier/NGC objects and named stars in view (OpenNGC, IAU names).
+   Gold markers have Hubble/JWST data (checked via MAST).
+5. `GET /api/landmark-detail` gives the close-up: JWST, then Hubble, then a survey. Hubble/JWST
+   mosaics are stitched from ESA ESASky tiles.
 
-## Image sources
-| Key | Source | Notes |
+### Image sources
+| Key | Source | Coverage |
 |---|---|---|
-| `dss2_color` (default) | DSS2 colour via CDS hips2fits | All-sky. Renders ESA's copy of the tiles if CDS is unreachable. |
-| `2mass_color` | 2MASS near-infrared | All-sky, same fallback. |
-| `allwise_color` | AllWISE mid-infrared | All-sky, same fallback. |
-| `panstarrs_hips` | Pan-STARRS DR1 via hips2fits | Dec > −30°. |
-| `skyview_mellinger` | Mellinger colour mosaic via NASA SkyView | All-sky, best for wide phone fields. |
-| `skyview_dss2_red` | DSS2 red via NASA SkyView | All-sky. |
-| `panstarrs` | Pan-STARRS cutout service (STScI) | Dec > −30°, fields ≤ 0.4°. |
+| `dss2_color` (default) | DSS2 colour, CDS hips2fits | All-sky |
+| `2mass_color` | 2MASS near-infrared | All-sky |
+| `allwise_color` | AllWISE mid-infrared | All-sky |
+| `skyview_mellinger` | Mellinger colour mosaic, NASA SkyView | All-sky, best for wide fields |
+| `skyview_dss2_red` | DSS2 red, NASA SkyView | All-sky |
+| `panstarrs_hips` | Pan-STARRS DR1, hips2fits | Dec > −30° |
+| `panstarrs` | Pan-STARRS cutouts, STScI | Dec > −30°, fields ≤ 0.4° |
+
+To add a source, subclass `ImageProvider` in `backend/providers/` (see `base.py`), then add one
+line to `PROVIDERS` in `providers/registry.py`. The app builds its pickers from `GET /api/providers`.
 
 ### Curated Cosmic Highlights
-A separate, hand-curated source: pre-rendered images (NASA, ESA, BBC, ...) attached to specific
-objects, with caption, outlet credit and a link to the original article. In the app it appears in
-a landmark's detail view **only for objects that have highlights** (decided from the downloaded
-index; if the object has none, or the index is unavailable, the option is hidden and the app falls
-back to the previous source). Several images per object are shown in a swipeable viewer with page
-dots; caption, credit and source link follow the current image. The backend serves stored files
-as-is and never contacts the outlet at request time.
-
-The content is managed with a local curator tool (`local_tools/curator/`, see its README; it is
-off unless `ENABLE_CURATOR=1`, binds to 127.0.0.1 and is never part of the deployed backend) and
-shipped to the backend as a read-only bundle (`backend/curated_bundle/`: `manifest.json` +
-`images/`, committed to the repo) at deploy time. Without a bundle the
-endpoints simply return an empty index. `CURATED_SOURCE` = `auto` (default locally: bundle if
-present, else the `CuratedHighlight` table) / `bundle` (default on Vercel) / `db`.
-
-### How to add an image source
-1. Write an adapter in `backend/providers/` that subclasses `ImageProvider` (`base.py`): set
-   `key`, `name`, `description`, `wavelength`, `coverage`, `credit`, and implement
-   `fetch_cutout(ra, dec, fov_deg, rotation_deg, width_px, height_px) -> JPEG bytes`. Override
-   `supports(ra, dec, fov_deg)` for partial coverage and set `all_sky = False`. Raise
-   `ProviderError` on failure; use `config.http.http_get` for timeouts and retries.
-   For any HiPS survey on CDS no new file is needed: just add a `Hips2FitsProvider(...)`.
-2. Add one line to `PROVIDERS` in `backend/providers/registry.py`.
-
-The app's image-source picker and the landmark view chips are built from `GET /api/providers`,
-so the app needs no change.
+Hand-picked NASA/ESA images with captions, credits and source links, shown in a landmark's detail
+view for objects that have them. They are managed with the local curator tool
+(`local_tools/curator/README.md`, needs `ENABLE_CURATOR=1`) and shipped as a read-only bundle in
+`backend/curated_bundle/`. Publish new ones by exporting, committing and pushing.
 
 ## Local development
 
-### Backend
+**Backend**
 ```powershell
 cd backend
 python -m venv .venv
-.venv\Scripts\pip install -r requirements-dev.txt     # tetra3 comes from GitHub (~50 MB)
+.venv\Scripts\pip install -r requirements-dev.txt     # tetra3 is fetched from GitHub (~50 MB)
 copy .env.example .env
 .venv\Scripts\python manage.py runserver 127.0.0.1:8000
 ```
-Self-hosting on a normal server (plate solving is CPU-heavy, keep generous timeouts):
-```bash
-gunicorn config.wsgi -w 2 --threads 4 --timeout 300 -b 0.0.0.0:8000
-```
-Useful: `manage.py cutout 83.82 -5.39 2.0 -o orion.jpg` (save a cutout),
-`manage.py fetch_catalogs` (download missing catalogue files; `--force` refreshes all of them,
-including the current IAU star names from the WGSN table on exopla.net), `manage.py test`.
-All settings are environment variables, listed in `backend/.env.example`.
+All settings are environment variables, documented in `backend/.env.example`. Handy commands:
+`manage.py test`, `manage.py fetch_catalogs`, `manage.py cutout 83.82 -5.39 2.0 -o orion.jpg`.
+To self-host elsewhere: `gunicorn config.wsgi -w 2 --threads 4 --timeout 300`.
 
-### Server address in the app
-The app talks to `https://nightsky-backend.vercel.app` by default. Change it in Settings (e.g.
-`http://192.168.1.20:8000`, or `http://10.0.2.2:8000` from the Android emulator); only a custom
-address is stored, so the default can follow future releases. Build-time default:
-`--dart-define=SERVER_URL=...`.
-
-### App on a phone over USB
+**App** (phone over USB, backend on port 8000)
 ```powershell
-# backend running on 127.0.0.1:8000, phone connected with USB debugging on
 adb reverse tcp:8000 tcp:8000
 cd app
 flutter run --dart-define=SERVER_URL=http://127.0.0.1:8000
 ```
-Run `adb reverse` again after every reconnect. App tests: `flutter test`.
+Tests: `flutter test`. The app defaults to `https://nightsky-backend.vercel.app`; change it in
+Settings or at build time with `--dart-define=SERVER_URL=...`.
+
+## Deployment
+
+### Backend on Vercel
+The APK targets `https://nightsky-backend.vercel.app`, so name the project **`nightsky-backend`**
+(or rebuild the APK with your own URL).
+
+1. Push the repo to GitHub. `backend/data/catalogs/` must be committed.
+2. At <https://vercel.com/new>, import it and set **Root Directory** to `backend`.
+3. Add environment variables:
+   - `DJANGO_SECRET_KEY`: a random string (`python -c "import secrets; print(secrets.token_urlsafe(50))"`)
+   - `DJANGO_ALLOWED_HOSTS`: `.vercel.app`
+   - optional `CACHE_BACKEND=redis` and `CACHE_LOCATION=redis://...` for a shared cache
+4. Deploy, then check `/` returns `{"status": "ok"}` and `/api/providers` lists the sources.
+
+CLI alternative: `npm i -g vercel`, then in `backend/` run `vercel link`, `vercel env add ...`,
+`vercel --prod`. Later pushes to `main` redeploy automatically.
+
+Good to know: requests may run up to 300 s (`vercel.json`, region `fra1`; use `bom1` for India);
+cold starts add ~5–15 s; the default cache is per-instance memory; gold "has Hubble/Webb image"
+markers may fill in over a few refreshes; only `/tmp` is writable.
+
+### Android APK
+Build a signed release (bump `version` in `app/pubspec.yaml` first; the `+N` must increase):
+```powershell
+cd app
+flutter build apk --release --dart-define=SERVER_URL=https://nightsky-backend.vercel.app
+```
+Output: `app/build/app/outputs/flutter-apk/app-release.apk`. Install with
+`adb install -r <apk>`, or copy it to a phone and allow *Install unknown apps*. If a dev build is
+installed, uninstall it first (different signing key).
+
+**Release key:** `app/android/nightsky-release.jks` and `app/android/key.properties` are
+git-ignored. Never commit them, and back them up: every update must be signed with the same key.
+Without them, release builds silently fall back to the debug key.
+
+To change the icon, replace `app/tool/icon/nightsky_icon_source.png` and run
+`python app/tool/icon/make_icons.py`.
 
 ## API
 | Endpoint | Description |
 |---|---|
-| `POST /api/solve` | multipart `image` + `metadata` (JSON) -> `{ra, dec, rotation, fov, confidence, approximate, source, message}` |
-| `GET /api/providers` | image sources with metadata |
-| `POST /api/sky-image` | JSON `{ra, dec, fov, rotation?, provider?, width?, height?}` -> JPEG; headers `X-Provider`, `X-Credit`, `X-Fallback-Used`, `X-Fallback-Reason`, `X-Fallback-Message` |
-| `GET /api/landmarks?ra&dec&fov&rotation&aspect` | `{landmarks: [{id, name, type_label, magnitude, x, y, has_hires, ...}], pending}` |
-| `GET /api/landmark-detail?id&provider&view` | `view` = `auto`/`jwst`/`hst`/`survey` -> `{image_jpeg_base64, image_source, credit, caption, fov, landmark}` |
+| `POST /api/solve` | multipart `image` + `metadata` JSON → `{ra, dec, rotation, fov, confidence, approximate, source, message}` |
+| `GET /api/providers` | Image sources and metadata |
+| `POST /api/sky-image` | `{ra, dec, fov, rotation?, provider?, width?, height?}` → JPEG |
+| `GET /api/landmarks?ra&dec&fov&rotation&aspect` | Landmarks in the field |
+| `GET /api/landmark-detail?id&provider&view` | Close-up; `view` = `auto`/`jwst`/`hst`/`survey` |
+| `GET /api/curated/index/`, `/api/curated/<body_id>/`, `/api/curated/image/<file>` | Curated highlights (public, read-only, ETag-cached) |
 
-| `GET /api/curated/index/` | Bodies that have at least one enabled highlight: `{version, updated_at, bodies: [{body_id, body_name, count}]}`. `body_id` is the landmark id. No image data. |
-| `GET /api/curated/<body_id>/` | `{body_id, body_name, version, highlights: [{id, title, image_url, thumbnail_url, source_outlet, source_url, credit, caption, ra, dec}]}`; 404 `NOT_FOUND` if none |
-| `GET /api/curated/image/<file>` | A stored image (or `_t.jpg` thumbnail), served as-is |
-
-The curated endpoints are public and read-only (other methods return 405). Both JSON endpoints send
-`ETag` and `Cache-Control: public, max-age=300, must-revalidate` and answer `If-None-Match` with
-`304`; the app uses this to avoid re-downloading an unchanged index.
-
-Errors are `{"error": {"code", "message"}}`: `SOLVE_FAILED` (422), `PROVIDER_UNAVAILABLE` (503),
+Errors: `{"error": {"code", "message"}}` with `SOLVE_FAILED` (422), `PROVIDER_UNAVAILABLE` (503),
 `NO_COVERAGE` (404), `INVALID_REQUEST` (400), `NOT_FOUND` (404), `CATALOG_UNAVAILABLE` (503).
 
-`/solve` metadata (all optional; without location + orientation only plate solving is tried):
-```json
-{"latitude": 51.48, "longitude": -0.01, "altitude": 30, "timestamp": "2026-10-29T22:00:00Z",
- "orientation": {"quaternion": {"x": 0, "y": 0, "z": 0, "w": 1}, "reference": "magnetic_north"},
- "image_rotation_deg": 0, "fov_deg": 65}
-```
-Orientation follows the Android rotation-vector convention: device -> world, world =
-East/North/Up, device = right/top-of-screen/out-of-screen; the rear camera looks along device -Z.
-`rotation` in responses is the position angle of image-up, degrees east of north.
+`/solve` metadata is optional: `latitude`, `longitude`, `altitude`, `timestamp`,
+`orientation` (`quaternion` + `reference`), `image_rotation_deg`, `fov_deg`. Orientation uses the
+Android rotation-vector convention (device → world ENU; the rear camera looks along −Z).
 
-## Rate limits and failures
-- Every external call has timeouts and a retry; a source that fails is skipped for 2 minutes.
-- Survey images, landmark checks and mosaics are cached (rounded position/FOV/source), so
-  repeated views don't hit the public services again.
-- If every source fails the app keeps your photo and offers *Retry*; landmarks are optional and
-  never block the result. A slow survey image can be cancelled.
-
-## Notes
-- tetra3's bundled database covers fields of 10-30 deg. Wide phone photos (~50-70 deg) often
-  can't be solved and use the sensor position instead; a custom database
-  (`Tetra3.generate_database(max_fov=...)`, then `TETRA3_DATABASE`) would fix that.
-- SIMBAD isn't used for landmarks because some ISPs (e.g. Jio) can't reach CDS servers.
+## Limitations
+- tetra3's bundled database covers 10–30° fields, so wide phone photos (~50–70°) often fall back
+  to the sensor position. A custom database (`TETRA3_DATABASE`) would fix that.
+- Every external call has timeouts and a retry; failing sources are skipped for 2 minutes, and
+  results are cached.
 
 ## Credits
 DSS2, 2MASS, AllWISE and Pan-STARRS via CDS hips2fits, NASA SkyView and STScI; Mellinger mosaic
-(c) Axel Mellinger; Hubble and JWST data (NASA/ESA/CSA) via ESA ESASky and MAST; object data
-from OpenNGC (CC BY-SA 4.0) and the IAU Catalog of Star Names.
+© Axel Mellinger; Hubble and JWST data (NASA/ESA/CSA) via ESA ESASky and MAST; object data from
+OpenNGC (CC BY-SA 4.0) and the IAU Catalog of Star Names.

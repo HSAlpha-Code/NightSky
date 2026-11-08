@@ -1,2 +1,0 @@
-# Never upload the local curator tool, its images or DB (only matters if the project root is deployed)
-local_tools/
