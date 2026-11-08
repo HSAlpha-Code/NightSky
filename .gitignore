@@ -17,6 +17,7 @@ app/android/key.properties
 app/android/*.jks
 backend/staticfiles/
 .vercel/
+.idea/
 
 # Curator tool (local_tools/curator) is tracked; only its working data stays local.
 local_tools/curator/media/
