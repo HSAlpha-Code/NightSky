@@ -47,6 +47,45 @@ enum FontSize {
   final double scale;
 }
 
+/// Rendering detail for Sky View, trading visual fidelity against GPU/memory load.
+enum SkyQuality {
+  powerSaver(
+    'Power saver',
+    'For older or low-memory phones (1K panorama, stars to mag 5.0)',
+    panoramaWidth: 1024,
+    limitingMagnitude: 5.0,
+    maxLabels: 18,
+  ),
+  balanced(
+    'Balanced',
+    'Sharp sky with low memory use (2K panorama, stars to mag 6.0)',
+    panoramaWidth: 2048,
+    limitingMagnitude: 6.0,
+    maxLabels: 32,
+  ),
+  maxDetail(
+    'Max detail',
+    'Full 3600×1800 Mellinger mosaic and all naked-eye stars (mag 6.5)',
+    panoramaWidth: 3600,
+    limitingMagnitude: 6.5,
+    maxLabels: 48,
+  );
+
+  const SkyQuality(
+    this.label,
+    this.description, {
+    required this.panoramaWidth,
+    required this.limitingMagnitude,
+    required this.maxLabels,
+  });
+
+  final String label;
+  final String description;
+  final int panoramaWidth;
+  final double limitingMagnitude;
+  final int maxLabels;
+}
+
 /// Backend used when the user never entered an address. Override at build time with
 /// `--dart-define=SERVER_URL=...`.
 const defaultServerUrl =
@@ -95,6 +134,13 @@ class AppSettings {
     this.autoCapture = false,
     this.showPointingReadout = true,
     this.fontSize = FontSize.normal,
+    this.skyQuality = SkyQuality.balanced,
+    this.startInSkyView = false,
+    this.nightVision = false,
+    this.useManualLocation = false,
+    this.manualLatitude,
+    this.manualLongitude,
+    this.manualLocationName,
     this.serverUrl,
   });
 
@@ -111,6 +157,23 @@ class AppSettings {
   final bool showPointingReadout;
   final FontSize fontSize;
 
+  /// Rendering quality for Sky View (Balanced by default).
+  final SkyQuality skyQuality;
+
+  /// Open straight into Sky View on launch (avoids touching the camera on phones without one).
+  final bool startInSkyView;
+
+  /// Red night-vision filter in Sky View to preserve dark adaptation.
+  final bool nightVision;
+
+  /// When true, Sky View uses [manualLatitude] and [manualLongitude] instead of GPS.
+  /// When false, [manualLatitude]/[manualLongitude] may still hold the last known GPS fix
+  /// as an offline fallback.
+  final bool useManualLocation;
+  final double? manualLatitude;
+  final double? manualLongitude;
+  final String? manualLocationName;
+
   /// Address the user saved in Settings; null = never changed, use [defaultServerUrl].
   final String? serverUrl;
 
@@ -121,6 +184,14 @@ class AppSettings {
     bool? autoCapture,
     bool? showPointingReadout,
     FontSize? fontSize,
+    SkyQuality? skyQuality,
+    bool? startInSkyView,
+    bool? nightVision,
+    bool? useManualLocation,
+    double? manualLatitude,
+    double? manualLongitude,
+    String? manualLocationName,
+    bool clearManualLocation = false,
     String? serverUrl,
     bool clearServerUrl = false,
   }) =>
@@ -131,6 +202,15 @@ class AppSettings {
         autoCapture: autoCapture ?? this.autoCapture,
         showPointingReadout: showPointingReadout ?? this.showPointingReadout,
         fontSize: fontSize ?? this.fontSize,
+        skyQuality: skyQuality ?? this.skyQuality,
+        startInSkyView: startInSkyView ?? this.startInSkyView,
+        nightVision: nightVision ?? this.nightVision,
+        useManualLocation:
+            clearManualLocation ? false : (useManualLocation ?? this.useManualLocation),
+        manualLatitude: clearManualLocation ? null : (manualLatitude ?? this.manualLatitude),
+        manualLongitude: clearManualLocation ? null : (manualLongitude ?? this.manualLongitude),
+        manualLocationName:
+            clearManualLocation ? null : (manualLocationName ?? this.manualLocationName),
         serverUrl: clearServerUrl ? null : serverUrl ?? this.serverUrl,
       );
 
@@ -141,6 +221,13 @@ class AppSettings {
         'autoCapture': autoCapture,
         'showPointingReadout': showPointingReadout,
         'fontSize': fontSize.name,
+        'skyQuality': skyQuality.name,
+        'startInSkyView': startInSkyView,
+        'nightVision': nightVision,
+        'useManualLocation': useManualLocation,
+        if (manualLatitude != null) 'manualLatitude': manualLatitude,
+        if (manualLongitude != null) 'manualLongitude': manualLongitude,
+        if (manualLocationName != null) 'manualLocationName': manualLocationName,
         if (serverUrl != null) 'serverUrl': serverUrl,
       };
 
@@ -150,6 +237,17 @@ class AppSettings {
     T pick<T extends Enum>(List<T> values, Object? name, T fallback) =>
         values.where((v) => v.name == name).firstOrNull ?? fallback;
     bool flag(String key, bool fallback) => j[key] is bool ? j[key] as bool : fallback;
+    double? coord(String key, double min, double max) {
+      final v = j[key];
+      if (v is! num) return null;
+      final d = v.toDouble();
+      return d.isFinite && d >= min && d <= max ? d : null;
+    }
+
+    final lat = coord('manualLatitude', -90, 90);
+    final lon = coord('manualLongitude', -180, 180);
+    final hasCoords = lat != null && lon != null;
+    final locName = j['manualLocationName'];
     return AppSettings(
       useGyroscope: flag('useGyroscope', d.useGyroscope),
       smoothing: pick(SensorSmoothing.values, j['smoothing'], d.smoothing),
@@ -157,6 +255,14 @@ class AppSettings {
       autoCapture: flag('autoCapture', d.autoCapture),
       showPointingReadout: flag('showPointingReadout', d.showPointingReadout),
       fontSize: pick(FontSize.values, j['fontSize'], d.fontSize),
+      skyQuality: pick(SkyQuality.values, j['skyQuality'], d.skyQuality),
+      startInSkyView: flag('startInSkyView', d.startInSkyView),
+      nightVision: flag('nightVision', d.nightVision),
+      useManualLocation: hasCoords && flag('useManualLocation', d.useManualLocation),
+      manualLatitude: hasCoords ? lat : null,
+      manualLongitude: hasCoords ? lon : null,
+      manualLocationName:
+          hasCoords && locName is String && locName.trim().isNotEmpty ? locName.trim() : null,
       serverUrl: _storedServerUrl(j['serverUrl']),
     );
   }
