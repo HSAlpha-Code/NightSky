@@ -5,31 +5,63 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../settings.dart';
 
-const mellingerAssetPath = 'assets/sky/mellinger_galactic.webp';
+const mellingerEastAssetPath = 'assets/sky/mellinger_east.webp';
+const mellingerWestAssetPath = 'assets/sky/mellinger_west.webp';
 const skySphereShaderAsset = 'shaders/sky_sphere.frag';
 
-/// Bundled Mellinger GPU resources for the active [SkyQuality] tier.
-class SkyResources {
-  const SkyResources({this.panorama, this.shaderProgram});
+/// Dual-hemisphere GPU textures forming an all-sky 8K (`2*S x S`) Galactic CAR panorama,
+/// keeping each individual texture `<= 4096 x 4096` for wide mobile GPU compatibility.
+class MellingerPanorama {
+  const MellingerPanorama({required this.east, required this.west});
 
-  final ui.Image? panorama;
-  final ui.FragmentProgram? shaderProgram;
+  /// Left half (`u in [0, 0.5]`, Galactic longitude `l in [+180°, 0°]`).
+  final ui.Image east;
+
+  /// Right half (`u in [0.5, 1.0]`, Galactic longitude `l in [0°, -180°]`).
+  final ui.Image west;
+
+  int get hemisphereSize => east.width;
+
+  void dispose() {
+    east.dispose();
+    west.dispose();
+  }
 }
 
-/// Decodes the Mellinger panorama scaled to [SkyQuality.panoramaWidth] so older/low-end
-/// phones keep GPU texture memory tiny (~2 MB on Power saver, ~8 MB on Balanced).
-Future<ui.Image?> decodeMellingerPanorama(SkyQuality quality, {AssetBundle? bundle}) async {
+Future<ui.Image?> _decodeSquare(String assetPath, int size, AssetBundle b) async {
+  final data = await b.load(assetPath);
+  final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+  final codec = await ui.instantiateImageCodec(
+    bytes,
+    targetWidth: size,
+    targetHeight: size,
+  );
+  final frame = await codec.getNextFrame();
+  codec.dispose();
+  return frame.image;
+}
+
+/// Decodes both hemispheres scaled to [SkyQuality.hemisphereSize] (`1600` Power saver,
+/// `3200` Balanced Retina default, `4096` full 8K Max detail).
+Future<MellingerPanorama?> decodeMellingerPanorama(
+  SkyQuality quality, {
+  AssetBundle? bundle,
+}) async {
   try {
-    final data = await (bundle ?? rootBundle).load(mellingerAssetPath);
-    final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-    final codec = await ui.instantiateImageCodec(
-      bytes,
-      targetWidth: quality.panoramaWidth,
-      targetHeight: quality.panoramaWidth ~/ 2,
-    );
-    final frame = await codec.getNextFrame();
-    codec.dispose();
-    return frame.image;
+    final b = bundle ?? rootBundle;
+    final edge = quality.hemisphereSize;
+    final results = await Future.wait([
+      _decodeSquare(mellingerEastAssetPath, edge, b),
+      _decodeSquare(mellingerWestAssetPath, edge, b),
+    ]);
+    final east = results[0];
+    final west = results[1];
+    if (east == null || west == null) {
+      east?.dispose();
+      west?.dispose();
+      return null;
+    }
+    return MellingerPanorama(east: east, west: west);
   } catch (_) {
     return null;
   }
@@ -39,18 +71,17 @@ Future<ui.FragmentProgram?> loadSkyShaderProgram() async {
   try {
     return await ui.FragmentProgram.fromAsset(skySphereShaderAsset);
   } catch (_) {
-    // Fallback mesh renderer in SkySpherePainter handles environments without shader support.
     return null;
   }
 }
 
 final skyShaderProgramProvider = FutureProvider<ui.FragmentProgram?>((ref) => loadSkyShaderProgram());
 
-final mellingerImageProvider = FutureProvider<ui.Image?>((ref) async {
+final mellingerImageProvider = FutureProvider<MellingerPanorama?>((ref) async {
   final quality = ref.watch(settingsProvider.select((s) => s.skyQuality));
-  final image = await decodeMellingerPanorama(quality);
-  if (image != null) {
-    ref.onDispose(image.dispose);
+  final pano = await decodeMellingerPanorama(quality);
+  if (pano != null) {
+    ref.onDispose(pano.dispose);
   }
-  return image;
+  return pano;
 });

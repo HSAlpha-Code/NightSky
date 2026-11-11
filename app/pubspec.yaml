@@ -64,7 +64,8 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/sky/mellinger_galactic.webp
+    - assets/sky/mellinger_east.webp
+    - assets/sky/mellinger_west.webp
     - assets/sky/stars.bin
     - assets/sky/sky_catalog.json
 
