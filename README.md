@@ -151,15 +151,6 @@ Android rotation-vector convention (device → world ENU; the rear camera looks 
 - Every external call has timeouts and a retry; failing sources are skipped for 2 minutes, and
   results are cached.
 
-## Pre-release license checklist (important)
-> **Verify Axel Mellinger's license terms before public or commercial release.**
-> Sky View bundles a processed 3600×1800 WebP copy of Axel Mellinger's All-Sky Milky Way Panorama
-> (`app/assets/sky/mellinger_galactic.webp`, retrieved from the Mellinger survey hosted on NASA
-> SkyView; see Mellinger 2009, *PASP* 121, 1180). While Axel Mellinger permits personal/educational
-> use with credit, shipping the panorama inside a distributed mobile app (especially on app stores
-> or commercially) requires verifying his current redistribution/licensing terms directly with
-> Axel Mellinger prior to release. Credit (`© Axel Mellinger`) is displayed in Sky View's HUD and
-> in the Sky Layers & Credits sheet.
 
 ## Credits & data provenance
 - **Milky Way panorama**: © Axel Mellinger (*PASP* 121, 1180, 2009), retrieved in Galactic `CAR`
