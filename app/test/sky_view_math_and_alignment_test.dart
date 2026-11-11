@@ -186,73 +186,89 @@ void main() {
     });
   });
 
-  group('Mellinger Milky Way panorama <-> catalog alignment', () {
-    test('bundled stars and Andromeda align with bright features in mellinger_galactic.webp', () async {
+  group('Mellinger 8K Milky Way panorama <-> catalog alignment', () {
+    test('bundled stars and Andromeda align with bright features in dual-hemisphere 8K WebP',
+        () async {
       await Future<void>.delayed(const Duration(milliseconds: 50));
-      final rawWebp = await File('assets/sky/mellinger_galactic.webp').readAsBytes();
-      final decoded = img.decodeWebP(rawWebp);
-      expect(decoded, isNotNull);
-      final pano = decoded!;
-      expect((pano.width, pano.height), (3600, 1800));
+      final eastBytes = await File('assets/sky/mellinger_east.webp').readAsBytes();
+      final westBytes = await File('assets/sky/mellinger_west.webp').readAsBytes();
+      final east = img.decodeWebP(eastBytes)!;
+      final west = img.decodeWebP(westBytes)!;
+      expect((east.width, east.height), (4096, 4096));
+      expect((west.width, west.height), (4096, 4096));
 
-      double lumAt(int x, int y) {
-        final px = pano.getPixel(x.clamp(0, pano.width - 1), y.clamp(0, pano.height - 1));
+      const fullW = 8192;
+      const fullH = 4096;
+
+      double lumAt(int gxRaw, int gyRaw) {
+        final gx = ((gxRaw % fullW) + fullW) % fullW;
+        final gy = gyRaw.clamp(0, fullH - 1);
+        final px = gx < 4096 ? east.getPixel(gx, gy) : west.getPixel(gx - 4096, gy);
         return (px.r + px.g + px.b) / 3.0;
       }
 
-      // Check 5 bright isolated stars across all quadrants + M31 Andromeda Galaxy from the
-      // actual shipped catalog against the actual shipped Mellinger panorama pixels.
+      // Check 5 bright isolated stars across both hemispheres + M31 Andromeda Galaxy from the
+      // shipped catalog against the shipped 8192x4096 Mellinger panorama pixels.
       final targets = <SkyObject>[
-        catalog.starObjectAt(catalog.indexOfHip(32349)), // Sirius
-        catalog.starObjectAt(catalog.indexOfHip(91262)), // Vega
+        catalog.starObjectAt(catalog.indexOfHip(32349)), // Sirius (west hemisphere)
+        catalog.starObjectAt(catalog.indexOfHip(91262)), // Vega (east hemisphere)
         catalog.starObjectAt(catalog.indexOfHip(69673)), // Arcturus
         catalog.starObjectAt(catalog.indexOfHip(113368)), // Fomalhaut
         catalog.starObjectAt(catalog.indexOfHip(7588)), // Achernar
         catalog.deepSkyObjects.firstWhere((d) => d.id == 'NGC0224'), // Andromeda Galaxy
       ];
 
+      const rWin = 16;
       for (final obj in targets) {
         final uv = icrsVecToPanoramaUv(obj.icrs);
-        final cx = (uv.u * pano.width - 0.5).round();
-        final cy = (uv.v * pano.height - 0.5).round();
+        final cx = (uv.u * fullW - 0.5).round();
+        final cy = (uv.v * fullH - 0.5).round();
 
-        var bestLum = -1.0;
-        var bestDx = 0, bestDy = 0;
         final samples = <double>[];
-        for (var dy = -6; dy <= 6; dy++) {
-          for (var dx = -6; dx <= 6; dx++) {
-            final l = lumAt((cx + dx) % pano.width, cy + dy);
+        final patch = List.generate(2 * rWin + 1, (_) => List<double>.filled(2 * rWin + 1, 0));
+        var peak = -1.0;
+        for (var dy = -rWin; dy <= rWin; dy++) {
+          for (var dx = -rWin; dx <= rWin; dx++) {
+            final l = lumAt(cx + dx, cy + dy);
+            patch[dy + rWin][dx + rWin] = l;
             samples.add(l);
-            if (l > bestLum) {
-              bestLum = l;
-              bestDx = dx;
-              bestDy = dy;
-            }
+            if (l > peak) peak = l;
           }
         }
         samples.sort();
         final medianBg = samples[samples.length ~/ 2];
-        final offsetDeg = math.sqrt(bestDx * bestDx + bestDy * bestDy) * (360.0 / pano.width);
+        final thr = medianBg + 0.55 * (peak - medianBg);
 
-        expect(offsetDeg, lessThanOrEqualTo(0.25),
-            reason: '${obj.name} peak offset ${offsetDeg.toStringAsFixed(2)}°');
-        expect(bestLum, greaterThan(medianBg + 70.0),
+        var sumW = 0.0, sumX = 0.0, sumY = 0.0;
+        for (var dy = -rWin; dy <= rWin; dy++) {
+          for (var dx = -rWin; dx <= rWin; dx++) {
+            final w = math.max(0.0, patch[dy + rWin][dx + rWin] - thr);
+            sumW += w;
+            sumX += w * dx;
+            sumY += w * dy;
+          }
+        }
+        final offsetDeg = math.sqrt(math.pow(sumX / sumW, 2) + math.pow(sumY / sumW, 2)) *
+            (360.0 / fullW);
+
+        expect(offsetDeg, lessThanOrEqualTo(0.15),
+            reason: '${obj.name} centroid offset ${offsetDeg.toStringAsFixed(3)}°');
+        expect(peak, greaterThan(medianBg + 80.0),
             reason: '${obj.name} should sit on a bright star/galaxy core in Mellinger');
       }
 
-      // Verify global orientation (no N/S or E/W flip): Galactic Centre and Large Magellanic
-      // Cloud are much brighter than the North Galactic Pole.
+      // Verify global orientation (no N/S or E/W flip, seamless across East/West seam at l=0°).
       double patchMean(double lDeg, double bDeg) {
         final normL = lDeg > 180.0 ? lDeg - 360.0 : lDeg;
         final u = (0.5 - normL / 360.0) % 1.0;
         final v = 0.5 - bDeg / 180.0;
-        final cx = (u * pano.width).round();
-        final cy = (v * pano.height).round();
+        final cx = (u * fullW).round();
+        final cy = (v * fullH).round();
         var sum = 0.0;
         var n = 0;
-        for (var dy = -8; dy <= 8; dy++) {
-          for (var dx = -8; dx <= 8; dx++) {
-            sum += lumAt((cx + dx) % pano.width, cy + dy);
+        for (var dy = -12; dy <= 12; dy++) {
+          for (var dx = -12; dx <= 12; dx++) {
+            sum += lumAt(cx + dx, cy + dy);
             n++;
           }
         }

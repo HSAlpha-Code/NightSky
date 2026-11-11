@@ -30,9 +30,12 @@ Highlights, or a close-up from Hubble, JWST or any survey.
   aligned to true astronomical north via offline NOAA WMM-2025 geomagnetic declination. Phones
   without a working camera can enable **Start in Sky View** in Settings to skip camera setup
   completely.
-- **Bundled sky layers (~1.34 MB total)**:
-  - `assets/sky/mellinger_galactic.webp` (1,200 KB, 3600×1800 Galactic `CAR` WebP): decoded at
-    1024×512 on *Power saver*, 2048×1024 on *Balanced* (default), or full 3600×1800 on *Max detail*.
+- **Bundled sky layers (~9.10 MB total)**:
+  - `assets/sky/mellinger_east.webp` + `mellinger_west.webp` (4,574 KB + 4,574 KB = **8.93 MB**,
+    stitched from 114 high-resolution $<30^\circ$ Mellinger `TAN` plates into an **8192×4096 (8K)**
+    Galactic `CAR` panorama split into two 4096×4096 GPU-friendly hemispheres): decoded at
+    3200×1600 on *Power saver*, **6400×3200 Retina** on *Balanced* (default), or full **8192×4096
+    (8K)** on *Max detail*, with custom sub-texel bilinear filtering in `sky_sphere.frag`.
   - `assets/sky/stars.bin` (104 KB): 8,874 naked-eye stars down to magnitude 6.5 (sorted
     brightest-first, with Hipparcos IDs and B−V spectral colours).
   - `assets/sky/sky_catalog.json` (66 KB): 574 proper star names, all 88 IAU constellations
@@ -151,6 +154,16 @@ Android rotation-vector convention (device → world ENU; the rear camera looks 
 - Every external call has timeouts and a retry; failing sources are skipped for 2 minutes, and
   results are cached.
 
+
+## Pre-release license checklist (important)
+> **Verify Axel Mellinger's license terms before public or commercial release.**
+> Sky View bundles a processed 8192×4096 (8K) WebP copy of Axel Mellinger's All-Sky Milky Way
+> Panorama (`app/assets/sky/mellinger_east.webp` and `mellinger_west.webp`, stitched from the
+> Mellinger survey hosted on NASA SkyView; see Mellinger 2009, *PASP* 121, 1180). While Axel
+> Mellinger permits personal/educational use with credit, shipping the panorama inside a distributed
+> mobile app (especially on app stores or commercially) requires verifying his current
+> redistribution/licensing terms directly with Axel Mellinger prior to release. Credit
+> (`© Axel Mellinger`) is displayed in Sky View's HUD and in the Sky Layers & Credits sheet.
 
 ## Credits & data provenance
 - **Milky Way panorama**: © Axel Mellinger (*PASP* 121, 1180, 2009), retrieved in Galactic `CAR`

@@ -48,40 +48,43 @@ enum FontSize {
 }
 
 /// Rendering detail for Sky View, trading visual fidelity against GPU/memory load.
+/// Panorama uses two square hemisphere textures (each `hemisphereSize` x `hemisphereSize`,
+/// forming a `2 * hemisphereSize` x `hemisphereSize` all-sky mosaic).
 enum SkyQuality {
   powerSaver(
     'Power saver',
-    'For older or low-memory phones (1K panorama, stars to mag 5.0)',
-    panoramaWidth: 1024,
-    limitingMagnitude: 5.0,
+    'For older or low-memory phones (3.2K panorama, stars to mag 5.2)',
+    hemisphereSize: 1600,
+    limitingMagnitude: 5.2,
     maxLabels: 18,
   ),
   balanced(
     'Balanced',
-    'Sharp sky with low memory use (2K panorama, stars to mag 6.0)',
-    panoramaWidth: 2048,
-    limitingMagnitude: 6.0,
-    maxLabels: 32,
+    'Crisp Retina sky (6.4K panorama, stars to mag 6.2)',
+    hemisphereSize: 3200,
+    limitingMagnitude: 6.2,
+    maxLabels: 34,
   ),
   maxDetail(
     'Max detail',
-    'Full 3600×1800 Mellinger mosaic and all naked-eye stars (mag 6.5)',
-    panoramaWidth: 3600,
+    'Full 8192×4096 8K Mellinger mosaic and all naked-eye stars (mag 6.5)',
+    hemisphereSize: 4096,
     limitingMagnitude: 6.5,
-    maxLabels: 48,
+    maxLabels: 50,
   );
 
   const SkyQuality(
     this.label,
     this.description, {
-    required this.panoramaWidth,
+    required this.hemisphereSize,
     required this.limitingMagnitude,
     required this.maxLabels,
   });
 
   final String label;
   final String description;
-  final int panoramaWidth;
+  final int hemisphereSize;
+  int get panoramaWidth => hemisphereSize * 2;
   final double limitingMagnitude;
   final int maxLabels;
 }

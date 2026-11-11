@@ -1,12 +1,12 @@
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import 'astro_math.dart';
+import 'panorama_loader.dart';
 
-/// Renders the 3D Mellinger Milky Way sphere, horizon line, cardinal compass points, and
+/// Renders the 3D 8K Mellinger Milky Way sphere, horizon line, cardinal compass points, and
 /// optional sky overlays onto a single hardware-accelerated [Canvas].
 class SkySpherePainter extends CustomPainter {
   SkySpherePainter({
@@ -22,7 +22,7 @@ class SkySpherePainter extends CustomPainter {
   });
 
   final SkyCamera camera;
-  final ui.Image? panorama;
+  final MellingerPanorama? panorama;
   final ui.FragmentProgram? shaderProgram;
   final double sunAltitudeDeg;
   final bool showMilkyWay;
@@ -30,8 +30,6 @@ class SkySpherePainter extends CustomPainter {
   final bool nightVision;
   final double exposure;
 
-  /// Layer callback invoked right after the background panorama and before the horizon/HUD
-  /// compass labels so stars, constellations, planets, Sun and Moon sit naturally in the sky.
   final void Function(Canvas canvas, Size size)? overlayPaint;
 
   static const _cardinals = [
@@ -49,7 +47,6 @@ class SkySpherePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
 
-    // Deep cosmos base coat.
     canvas.drawRect(
       Offset.zero & size,
       Paint()..color = nightVision ? const Color(0xFF090101) : const Color(0xFF03050A),
@@ -77,7 +74,7 @@ class SkySpherePainter extends CustomPainter {
   void _paintWithShader(
     Canvas canvas,
     Size size,
-    ui.Image pano,
+    MellingerPanorama pano,
     ui.FragmentProgram program,
   ) {
     final shader = program.fragmentShader();
@@ -105,22 +102,22 @@ class SkySpherePainter extends CustomPainter {
     shader.setFloat(i++, sunAltitudeDeg);
     shader.setFloat(i++, exposure);
     shader.setFloat(i++, nightVision ? 1.0 : 0.0);
+    shader.setFloat(i++, pano.hemisphereSize.toDouble());
 
-    shader.setImageSampler(0, pano);
+    shader.setImageSampler(0, pano.east);
+    shader.setImageSampler(1, pano.west);
 
     canvas.drawRect(Offset.zero & size, Paint()..shader = shader);
     shader.dispose();
   }
 
-  /// Screen-space ray-grid `drawVertices` fallback using the exact same Galactic UV math as
-  /// `sky_sphere.frag`. Subdividing in screen space (20x14) avoids all affine perspective swim.
-  void _paintWithMeshFallback(Canvas canvas, Size size, ui.Image pano) {
-    const cols = 20;
-    const rows = 14;
-    final imgW = pano.width.toDouble();
-    final imgH = pano.height.toDouble();
+  /// Screen-space ray-grid `drawVertices` fallback splitting triangles cleanly between the East
+  /// (`u < 0.5`) and West (`u >= 0.5`) hemisphere textures when custom shaders aren't available.
+  void _paintWithMeshFallback(Canvas canvas, Size size, MellingerPanorama pano) {
+    const cols = 24;
+    const rows = 16;
+    final edge = pano.hemisphereSize.toDouble();
 
-    // Compute per-grid-node screen position and Galactic (u, v).
     final gridU = Float32List((cols + 1) * (rows + 1));
     final gridV = Float32List((cols + 1) * (rows + 1));
     final gridX = Float32List((cols + 1) * (rows + 1));
@@ -148,32 +145,40 @@ class SkySpherePainter extends CustomPainter {
       }
     }
 
-    // Build unindexed triangles so cells crossing the l = +/-180 deg wrap seam can adjust U
-    // cleanly per-cell without tearing across the whole panorama.
-    final positions = Float32List(cols * rows * 6 * 2);
-    final texCoords = Float32List(cols * rows * 6 * 2);
-    var out = 0;
+    final eastPos = <double>[];
+    final eastUv = <double>[];
+    final westPos = <double>[];
+    final westUv = <double>[];
 
     void emitQuad(int i00, int i10, int i01, int i11) {
       var u00 = gridU[i00], u10 = gridU[i10], u01 = gridU[i01], u11 = gridU[i11];
-      final maxU = math.max(math.max(u00, u10), math.max(u01, u11));
-      final minU = math.min(math.min(u00, u10), math.min(u01, u11));
+      final maxU = [u00, u10, u01, u11].reduce((a, b) => a > b ? a : b);
+      final minU = [u00, u10, u01, u11].reduce((a, b) => a < b ? a : b);
       if (maxU - minU > 0.5) {
         if (u00 < 0.5) u00 += 1.0;
         if (u10 < 0.5) u10 += 1.0;
         if (u01 < 0.5) u01 += 1.0;
         if (u11 < 0.5) u11 += 1.0;
       }
-      final verts = [
+      final avgU = (u00 + u10 + u01 + u11) * 0.25;
+      final useWest = avgU >= 0.5 && avgU < 1.0;
+      final posOut = useWest ? westPos : eastPos;
+      final uvOut = useWest ? westUv : eastUv;
+
+      double localU(double gu) {
+        final wrapped = gu >= 1.0 ? gu - 1.0 : gu;
+        final lu = useWest ? (wrapped - 0.5) * 2.0 : wrapped * 2.0;
+        return lu.clamp(0.0, 1.0) * edge;
+      }
+
+      for (final (idx, gu) in [
         (i00, u00), (i10, u10), (i01, u01),
         (i10, u10), (i11, u11), (i01, u01),
-      ];
-      for (final (idx, uVal) in verts) {
-        positions[out] = gridX[idx];
-        positions[out + 1] = gridY[idx];
-        texCoords[out] = (uVal.clamp(0.0, 1.0)) * imgW;
-        texCoords[out + 1] = gridV[idx] * imgH;
-        out += 2;
+      ]) {
+        posOut.add(gridX[idx]);
+        posOut.add(gridY[idx]);
+        uvOut.add(localU(gu));
+        uvOut.add(gridV[idx] * edge);
       }
     }
 
@@ -184,29 +189,35 @@ class SkySpherePainter extends CustomPainter {
       }
     }
 
-    final vertices = ui.Vertices.raw(
-      ui.VertexMode.triangles,
-      positions,
-      textureCoordinates: texCoords,
-    );
-    final paint = Paint()
-      ..shader = ImageShader(
-        pano,
-        TileMode.repeated,
-        TileMode.clamp,
-        Matrix4.identity().storage,
-        filterQuality: FilterQuality.low,
+    void drawBatch(ui.Image tex, List<double> pos, List<double> uvs) {
+      if (pos.isEmpty) return;
+      final vertices = ui.Vertices.raw(
+        ui.VertexMode.triangles,
+        Float32List.fromList(pos),
+        textureCoordinates: Float32List.fromList(uvs),
       );
-    if (nightVision) {
-      paint.colorFilter = const ColorFilter.matrix(<double>[
-        0.34, 0.66, 0.12, 0, 0,
-        0.02, 0.04, 0.01, 0, 0,
-        0.01, 0.02, 0.01, 0, 0,
-        0, 0, 0, 1, 0,
-      ]);
+      final paint = Paint()
+        ..shader = ImageShader(
+          tex,
+          TileMode.clamp,
+          TileMode.clamp,
+          Matrix4.identity().storage,
+          filterQuality: FilterQuality.medium,
+        );
+      if (nightVision) {
+        paint.colorFilter = const ColorFilter.matrix(<double>[
+          0.34, 0.66, 0.12, 0, 0,
+          0.02, 0.04, 0.01, 0, 0,
+          0.01, 0.02, 0.01, 0, 0,
+          0, 0, 0, 1, 0,
+        ]);
+      }
+      canvas.drawVertices(vertices, BlendMode.srcOver, paint);
+      vertices.dispose();
     }
-    canvas.drawVertices(vertices, BlendMode.srcOver, paint);
-    vertices.dispose();
+
+    drawBatch(pano.east, eastPos, eastUv);
+    drawBatch(pano.west, westPos, westUv);
   }
 
   void _paintProceduralGradient(Canvas canvas, Size size) {
@@ -225,9 +236,7 @@ class SkySpherePainter extends CustomPainter {
   }
 
   void _paintHorizonAndCardinals(Canvas canvas, Size size) {
-    final lineColor = nightVision
-        ? const Color(0x99FF4040)
-        : const Color(0x7770A8FF);
+    final lineColor = nightVision ? const Color(0x99FF4040) : const Color(0x7770A8FF);
     final linePaint = Paint()
       ..color = lineColor
       ..style = PaintingStyle.stroke
@@ -259,7 +268,6 @@ class SkySpherePainter extends CustomPainter {
     }
     canvas.drawPath(path, linePaint);
 
-    // Cardinal and intercardinal compass badges right along the mathematical horizon.
     for (final (az, label, major) in _cardinals) {
       final pt = camera.projectEnu(altAzToEnu(0.0, az), size);
       if (pt == null ||
