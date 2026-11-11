@@ -1,14 +1,18 @@
 # NightSky
 
 Point your phone at the night sky, take a photo, and NightSky replaces it with a professional
-survey image of the same patch of sky. Notable objects show up as tappable markers; tapping one
-opens a close-up from Hubble, JWST or any survey.
+survey image of the same patch of sky — or switch to **Sky View** to explore a live 3D virtual
+night sky driven by the phone's orientation sensors, with no camera or internet connection needed.
+Notable objects show up as tappable markers; tapping one opens rich facts, Curated Cosmic
+Highlights, or a close-up from Hubble, JWST or any survey.
 
 - `backend/`: Django REST API (plate solving, survey images, landmarks, Hubble/JWST mosaics)
-- `app/`: Flutter Android app
+- `app/`: Flutter Android app (Camera plate-solving mode + offline 3D Sky View mode)
 - `local_tools/curator/`: local-only tool for managing curated highlights (never deployed)
 
-## How it works
+## Modes
+
+### Camera mode (photo -> survey replacement)
 1. The app sends the photo plus GPS, time, phone orientation and camera field of view.
 2. `POST /api/solve` converts the orientation to a sky position (astropy, pygeomag), then refines
    it by plate-solving the stars (tetra3). With too few stars it returns the sensor position,
@@ -19,6 +23,29 @@ opens a close-up from Hubble, JWST or any survey.
    Gold markers have Hubble/JWST data (checked via MAST).
 5. `GET /api/landmark-detail` gives the close-up: JWST, then Hubble, then a survey. Hubble/JWST
    mosaics are stitched from ESA ESASky tiles.
+
+### Sky View mode (offline 3D sensor sky map)
+- **No camera & fully offline**: Renders Axel Mellinger's all-sky Milky Way panorama on a 3D GPU
+  sky sphere (`app/shaders/sky_sphere.frag`, with automatic `Canvas.drawVertices` fallback),
+  aligned to true astronomical north via offline NOAA WMM-2025 geomagnetic declination. Phones
+  without a working camera can enable **Start in Sky View** in Settings to skip camera setup
+  completely.
+- **Bundled sky layers (~1.34 MB total)**:
+  - `assets/sky/mellinger_galactic.webp` (1,200 KB, 3600×1800 Galactic `CAR` WebP): decoded at
+    1024×512 on *Power saver*, 2048×1024 on *Balanced* (default), or full 3600×1800 on *Max detail*.
+  - `assets/sky/stars.bin` (104 KB): 8,874 naked-eye stars down to magnitude 6.5 (sorted
+    brightest-first, with Hipparcos IDs and B−V spectral colours).
+  - `assets/sky/sky_catalog.json` (66 KB): 574 proper star names, all 88 IAU constellations
+    (highlighting whichever constellation is centred in view), and 145 Messier / curated / bright
+    deep-sky objects.
+  - Real-time offline ephemeris (`app/lib/sky_view/ephemeris.dart`) for the **Sun**, **Moon**
+    (topocentric parallax + illuminated phase disc), and **Mercury–Neptune**.
+- **Interactive tools**: Time Machine scrubber (±12 h slider, ±1 h / ±1 d steps, 300× timelapse,
+  date/time picker), manual coordinate/preset location picker when GPS is unavailable, object
+  search with a 3D perimeter directional guide arrow, compass calibration diagnostics, red
+  night-vision mode, and direct links to **Curated Cosmic Highlights** and Webb/Hubble close-ups.
+- To regenerate the bundled Sky View assets from upstream sources:
+  `python app/tool/sky_data/prepare_mellinger.py` and `python app/tool/sky_data/prepare_catalogs.py`.
 
 ### Image sources
 | Key | Source | Coverage |
@@ -124,7 +151,30 @@ Android rotation-vector convention (device → world ENU; the rear camera looks 
 - Every external call has timeouts and a retry; failing sources are skipped for 2 minutes, and
   results are cached.
 
-## Credits
-DSS2, 2MASS, AllWISE and Pan-STARRS via CDS hips2fits, NASA SkyView and STScI; Mellinger mosaic
-© Axel Mellinger; Hubble and JWST data (NASA/ESA/CSA) via ESA ESASky and MAST; object data from
-OpenNGC (CC BY-SA 4.0) and the IAU Catalog of Star Names.
+## Pre-release license checklist (important)
+> **Verify Axel Mellinger's license terms before public or commercial release.**
+> Sky View bundles a processed 3600×1800 WebP copy of Axel Mellinger's All-Sky Milky Way Panorama
+> (`app/assets/sky/mellinger_galactic.webp`, retrieved from the Mellinger survey hosted on NASA
+> SkyView; see Mellinger 2009, *PASP* 121, 1180). While Axel Mellinger permits personal/educational
+> use with credit, shipping the panorama inside a distributed mobile app (especially on app stores
+> or commercially) requires verifying his current redistribution/licensing terms directly with
+> Axel Mellinger prior to release. Credit (`© Axel Mellinger`) is displayed in Sky View's HUD and
+> in the Sky Layers & Credits sheet.
+
+## Credits & data provenance
+- **Milky Way panorama**: © Axel Mellinger (*PASP* 121, 1180, 2009), retrieved in Galactic `CAR`
+  projection via NASA SkyView (HEASARC/GSFC) — **verify license terms before release** (see above).
+- **Stars & 88 IAU constellations** (`app/assets/sky/stars.bin`, `sky_catalog.json`):
+  [`ofrohn/d3-celestial`](https://github.com/ofrohn/d3-celestial) (`stars.8.json`,
+  `starnames.json`, `constellations.lines.json`, `constellations.json`), Copyright © 2015 Olaf
+  Frohn, **BSD-3-Clause License** (astrometry derived from ESA Hipparcos `I/239` & XHIP), merged
+  with official proper star names from the **IAU Working Group on Star Names** (`IAU-WGSN.csv` /
+  `IAU-CSN.txt`).
+- **Deep-sky objects** (`sky_catalog.json` & `/api/landmarks`): **OpenNGC** (`NGC.csv` +
+  `addendum.csv`, Mattia Verga), **CC BY-SA 4.0**.
+- **Solar System & geomagnetism**: Planetary Keplerian elements from NASA JPL (Standish 1992);
+  lunar periodic theory from Meeus (*Astronomical Algorithms*, Ch. 47); offline geomagnetic
+  declination from **NOAA/NCEI WMM-2025** (public domain).
+- **Online survey cutouts & space-telescope mosaics**: DSS2, 2MASS, AllWISE and Pan-STARRS via CDS
+  hips2fits, NASA SkyView and STScI; Hubble and JWST data (NASA/ESA/CSA) via ESA ESASky and MAST.
+  Full per-asset details are recorded in `app/assets/sky/SOURCES.md`.

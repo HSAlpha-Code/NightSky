@@ -145,8 +145,19 @@ class OrientationTracker {
   StreamSubscription<dynamic>? _sub;
   Object? lastError;
 
+  /// Latest Android SensorManager accuracy (0 = unreliable, 1 = low, 2 = medium, 3 = high),
+  /// or null before any reading arrives.
+  int? magnetometerAccuracy;
+  int? rotationAccuracy;
+
   SensorMode get mode => engine.mode;
   bool get hasData => engine.hasData;
+
+  /// True when the active heading sensor reports unreliable or low calibration accuracy.
+  bool get needsCalibration {
+    final acc = mode == SensorMode.gyro ? rotationAccuracy : magnetometerAccuracy;
+    return acc != null && acc <= 1;
+  }
 
   /// Start (or restart, e.g. after the sensor mode changed in Settings).
   void start({SensorMode? mode, double? alpha}) {
@@ -157,6 +168,8 @@ class OrientationTracker {
     }
     if (_sub != null) return;
     lastError = null;
+    magnetometerAccuracy = null;
+    rotationAccuracy = null;
     engine.reset();
     _sub = _events.receiveBroadcastStream({'mode': engine.mode.name}).listen(_onEvent,
         onError: (Object err) => lastError = err);
@@ -165,13 +178,20 @@ class OrientationTracker {
   void _onEvent(dynamic event) {
     final d = [for (final v in event as List<dynamic>) (v as num).toDouble()];
     final t = Duration(microseconds: d[6] ~/ 1000);
+    final acc = d[5].isFinite ? d[5].round() : null;
     switch (d[0].round()) {
       case 0:
         engine.addAccelerometer(d.sublist(1, 4), t);
       case 1:
+        if (acc != null && acc >= 0) magnetometerAccuracy = acc;
         engine.addMagnetometer(d.sublist(1, 4), t);
       case 2:
+        if (acc != null && acc >= 0) rotationAccuracy = acc;
         engine.addRotationVector(d.sublist(1, 5), t);
+      case 3:
+        final level = d[2].round();
+        if (d[1].round() == 1) magnetometerAccuracy = level;
+        if (d[1].round() == 2) rotationAccuracy = level;
     }
   }
 

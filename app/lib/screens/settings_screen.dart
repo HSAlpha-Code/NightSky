@@ -115,6 +115,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           onChanged: (v) => notifier.update((s) => s.copyWith(showPointingReadout: v)),
         ),
         const SizedBox(height: 8),
+        const _SectionHeader('Sky View'),
+        _ChoiceSetting<SkyQuality>(
+          title: 'Sky View quality',
+          values: SkyQuality.values,
+          selected: s.skyQuality,
+          label: (v) => v.label,
+          description: s.skyQuality.description,
+          onSelected: (v) => notifier.update((s) => s.copyWith(skyQuality: v)),
+        ),
+        SwitchListTile(
+          key: const Key('setting-start-sky-view'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Start in Sky View'),
+          subtitle: const Text(
+              'Launch directly into the 3D virtual sky without starting the camera.'),
+          value: s.startInSkyView,
+          onChanged: (v) => notifier.update((s) => s.copyWith(startInSkyView: v)),
+        ),
+        SwitchListTile(
+          key: const Key('setting-night-vision'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Red night-vision mode'),
+          subtitle: const Text('Tints Sky View deep red to protect dark-adapted eyes.'),
+          value: s.nightVision,
+          onChanged: (v) => notifier.update((s) => s.copyWith(nightVision: v)),
+        ),
+        const SizedBox(height: 8),
         const _SectionHeader('Display'),
         _ChoiceSetting<FontSize>(
           title: 'Font size',

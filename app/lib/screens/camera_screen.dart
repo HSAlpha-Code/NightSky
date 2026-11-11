@@ -15,6 +15,7 @@ import '../widgets/camera_hints.dart';
 import '../widgets/provider_picker.dart';
 import 'result_screen.dart';
 import 'settings_screen.dart';
+import 'sky_view_screen.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
   const CameraScreen({super.key});
@@ -208,6 +209,12 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         backgroundColor: Colors.black,
         title: const Text('NightSky'),
         actions: [
+          TextButton.icon(
+            key: const Key('open-sky-view'),
+            onPressed: _openSkyView,
+            icon: const Icon(Icons.public, size: 18),
+            label: const Text('Sky View'),
+          ),
           IconButton(
             tooltip: 'Settings',
             icon: const Icon(Icons.settings_outlined),
@@ -274,6 +281,20 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     return banners;
   }
 
+  Future<void> _openSkyView() async {
+    final c = _controller;
+    _controller = null;
+    await c?.dispose();
+    if (!mounted) return;
+    setState(() {});
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const SkyViewScreen(openedFromCamera: true)),
+    );
+    if (mounted && _controller == null) {
+      unawaited(_initCamera());
+    }
+  }
+
   Widget _preview() {
     if (_cameraError != null) {
       return Center(
@@ -284,10 +305,17 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             const SizedBox(height: 16),
             Text(_cameraError!, textAlign: TextAlign.center),
             const SizedBox(height: 16),
-            FilledButton(
-              onPressed: _cameraPermissionDenied ? Geolocator.openAppSettings : _initCamera,
-              child: Text(_cameraPermissionDenied ? 'Open settings' : 'Try again'),
-            ),
+            Wrap(spacing: 12, runSpacing: 8, alignment: WrapAlignment.center, children: [
+              FilledButton(
+                onPressed: _cameraPermissionDenied ? Geolocator.openAppSettings : _initCamera,
+                child: Text(_cameraPermissionDenied ? 'Open settings' : 'Try again'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _openSkyView,
+                icon: const Icon(Icons.public, size: 18),
+                label: const Text('Use Sky View instead'),
+              ),
+            ]),
           ]),
         ),
       );

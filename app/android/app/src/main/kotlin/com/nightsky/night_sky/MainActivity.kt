@@ -136,7 +136,20 @@ private class SensorStreamHandler(private val manager: SensorManager) : EventCha
                 )
             }
 
-            override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
+            override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {
+                // kind 3 = accuracy-only update [3, sensorKind, accuracy, 0, NaN, accuracy, now]
+                val sensorKind = when (sensor.type) {
+                    Sensor.TYPE_ACCELEROMETER -> 0.0
+                    Sensor.TYPE_MAGNETIC_FIELD -> 1.0
+                    else -> 2.0
+                }
+                events.success(
+                    listOf(
+                        3.0, sensorKind, accuracy.toDouble(), 0.0,
+                        Double.NaN, accuracy.toDouble(), System.nanoTime().toDouble(),
+                    )
+                )
+            }
         }
         sensors.forEach { manager.registerListener(l, it, SensorManager.SENSOR_DELAY_GAME) }
         listener = l
