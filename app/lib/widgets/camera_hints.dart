@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'glass.dart';
+
 /// Default max orientation spread (degrees) over the last 0.6 s that still counts as
 /// "steady". The user can change it in Settings (Steadiness).
 const defaultMaxShakeDeg = 1.5;
@@ -14,15 +16,19 @@ class InfoBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialBanner(
-      leading: Icon(icon),
-      content: Text(text),
-      actions: [
-        if (action != null)
-          TextButton(onPressed: onTap, child: Text(action!))
-        else
-          const SizedBox.shrink(),
-      ],
+    return Glass(
+      padding: const EdgeInsets.fromLTRB(16, 6, 6, 6),
+      child: Row(children: [
+        Icon(icon, size: 20, color: Colors.amberAccent),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(text, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white)),
+          ),
+        ),
+        if (action != null) TextButton(onPressed: onTap, child: Text(action!)),
+      ]),
     );
   }
 }
@@ -34,24 +40,27 @@ class CaptureTips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: Colors.black.withValues(alpha: 0.7),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 4, 12),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Expanded(
-            child: Text(
-              'For best results:\n'
-              '• Hold the phone steady (rest it on something if you can)\n'
-              '• Turn on Night mode if your camera has it\n'
-              '• Avoid city lights, the Moon and buildings in the frame',
-              style: TextStyle(height: 1.4),
-            ),
+    return Glass(
+      padding: const EdgeInsets.fromLTRB(16, 10, 4, 12),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 2, right: 12),
+          child: Icon(Icons.tips_and_updates_outlined, size: 20, color: Colors.amberAccent),
+        ),
+        const Expanded(
+          child: Text(
+            'For best results:\n'
+            '• Hold the phone steady (rest it on something if you can)\n'
+            '• Turn on Night mode if your camera has it\n'
+            '• Avoid city lights, the Moon and buildings in the frame',
+            style: TextStyle(height: 1.4, color: Colors.white),
           ),
-          IconButton(
-              tooltip: 'Hide tips', icon: const Icon(Icons.close, size: 18), onPressed: onClose),
-        ]),
-      ),
+        ),
+        IconButton(
+            tooltip: 'Hide tips',
+            icon: const Icon(Icons.close, size: 18, color: Colors.white70),
+            onPressed: onClose),
+      ]),
     );
   }
 }
@@ -75,19 +84,25 @@ class SteadyIndicator extends StatelessWidget {
     final steady = shakeDeg <= maxShakeDeg;
     final progress = autoCaptureProgress;
     return Center(
-      child: Chip(
-        avatar: steady && progress != null
-            ? SizedBox.square(
-                dimension: 18,
-                child: CircularProgressIndicator(
-                    value: progress, strokeWidth: 2.5, color: Colors.greenAccent),
-              )
-            : Icon(steady ? Icons.check_circle : Icons.pan_tool_alt_outlined,
+      child: Glass(
+        borderRadius: const BorderRadius.all(Radius.circular(999)),
+        padding: const EdgeInsets.fromLTRB(10, 7, 14, 7),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (steady && progress != null)
+            SizedBox.square(
+              dimension: 18,
+              child: CircularProgressIndicator(
+                  value: progress, strokeWidth: 2.5, color: Colors.greenAccent),
+            )
+          else
+            Icon(steady ? Icons.check_circle : Icons.pan_tool_alt_outlined,
                 color: steady ? Colors.greenAccent : Colors.amber, size: 18),
-        label: Text(steady
-            ? (progress != null ? 'Steady, taking photo…' : 'Steady')
-            : 'Hold steady…'),
-        backgroundColor: Colors.black.withValues(alpha: 0.6),
+          const SizedBox(width: 8),
+          Text(
+            steady ? (progress != null ? 'Steady, taking photo…' : 'Steady') : 'Hold steady…',
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Colors.white),
+          ),
+        ]),
       ),
     );
   }
@@ -117,12 +132,9 @@ class PointingReadout extends StatelessWidget {
     final below = altitudeDeg < 0;
     final alt = '${altitudeDeg >= 0 ? '+' : '−'}${altitudeDeg.abs().round()}°';
     return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(16),
-        ),
+      child: Glass(
+        borderRadius: const BorderRadius.all(Radius.circular(999)),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         child: Text(
           'Alt $alt${below ? ' (below horizon)' : ''} · '
           '${compassPoint(azimuthDeg)} ${azimuthDeg.round() % 360}° · '

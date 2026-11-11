@@ -72,6 +72,11 @@ class _LandmarkDetailScreenState extends ConsumerState<LandmarkDetailScreen> {
   late DetailView _view;
   late DetailView _fallback;
 
+  /// Credit, captions and facts are shown by default; the user can hide them.
+  bool _showInfo = true;
+
+  void _toggleInfo() => setState(() => _showInfo = !_showInfo);
+
   @override
   void initState() {
     super.initState();
@@ -101,14 +106,27 @@ class _LandmarkDetailScreenState extends ConsumerState<LandmarkDetailScreen> {
     final args = (lm.id, view);
     // Curated images need none of the (slow) mosaic work.
     final detail = curated ? null : ref.watch(landmarkDetailProvider(args));
+    final credit = detail?.value != null && !detail!.isLoading ? detail.value : null;
     return Scaffold(
-      appBar: AppBar(backgroundColor: Colors.black, title: Text(lm.name)),
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        title: Text(lm.name),
+        actions: [
+          IconButton(
+            tooltip: _showInfo ? 'Hide details' : 'Show details',
+            isSelected: _showInfo,
+            icon: const Icon(Icons.info_outline),
+            selectedIcon: const Icon(Icons.info),
+            onPressed: _toggleInfo,
+          ),
+        ],
+      ),
       body: SafeArea(
         child: ListView(children: [
           _ViewPicker(views: views, selected: view, onSelected: _select),
           if (curated)
-            _CuratedPanel(landmark: lm)
-          else if (detail != null) ...[
+            _CuratedPanel(landmark: lm, showInfo: _showInfo)
+          else if (detail != null)
             AspectRatio(
               aspectRatio: 1,
               child: detail.when(
@@ -125,10 +143,51 @@ class _LandmarkDetailScreenState extends ConsumerState<LandmarkDetailScreen> {
                 ),
               ),
             ),
-            if (detail.value case final d? when !detail.isLoading) _ImageCredit(detail: d),
-          ],
-          LandmarkFacts(landmark: lm),
+          // Credit and facts stay out of the way until asked for.
+          _DetailsToggle(expanded: _showInfo, onPressed: _toggleInfo),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: _showInfo
+                ? Column(
+                    key: const Key('landmark-details'),
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (credit != null) _ImageCredit(detail: credit),
+                      LandmarkFacts(landmark: lm),
+                    ],
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
         ]),
+      ),
+    );
+  }
+}
+
+/// "Show details" / "Hide details" pill under the image.
+class _DetailsToggle extends StatelessWidget {
+  const _DetailsToggle({required this.expanded, required this.onPressed});
+
+  final bool expanded;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Center(
+        child: FilledButton.tonalIcon(
+          key: const Key('details-toggle'),
+          onPressed: onPressed,
+          icon: AnimatedRotation(
+            turns: expanded ? 0.5 : 0,
+            duration: const Duration(milliseconds: 250),
+            child: const Icon(Icons.expand_more),
+          ),
+          label: Text(expanded ? 'Hide details' : 'Show details'),
+        ),
       ),
     );
   }
@@ -136,9 +195,12 @@ class _LandmarkDetailScreenState extends ConsumerState<LandmarkDetailScreen> {
 
 /// The "Curated Cosmic Highlights" source: details are fetched when this opens.
 class _CuratedPanel extends ConsumerStatefulWidget {
-  const _CuratedPanel({required this.landmark});
+  const _CuratedPanel({required this.landmark, required this.showInfo});
 
   final Landmark landmark;
+
+  /// Show the caption, credit and source of the current image.
+  final bool showInfo;
 
   @override
   ConsumerState<_CuratedPanel> createState() => _CuratedPanelState();
@@ -175,6 +237,7 @@ class _CuratedPanelState extends ConsumerState<_CuratedPanel> {
       data: (b) => CuratedViewer(
         key: ValueKey(b.bodyId),
         highlights: b.highlights,
+        showAttribution: widget.showInfo,
         initialPage: ref.read(curatedPageProvider.notifier).pageFor(id),
         onPageChanged: (p) => ref.read(curatedPageProvider.notifier).set(id, p),
       ),

@@ -23,7 +23,11 @@ class CuratedViewer extends StatefulWidget {
     this.initialPage = 0,
     this.onPageChanged,
     this.onOpenLink,
+    this.showAttribution = true,
   });
+
+  /// Show the title, caption, credit and source of the current image below it.
+  final bool showAttribution;
 
   final List<CuratedHighlight> highlights;
   final int initialPage;
@@ -112,7 +116,14 @@ class _CuratedViewerState extends State<CuratedViewer> {
             onTap: _goTo,
           ),
         ),
-      _Attribution(item: current, onOpenLink: widget.onOpenLink ?? openExternalLink),
+      AnimatedSize(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: widget.showAttribution
+            ? _Attribution(item: current, onOpenLink: widget.onOpenLink ?? openExternalLink)
+            : const SizedBox(width: double.infinity),
+      ),
     ]);
   }
 }

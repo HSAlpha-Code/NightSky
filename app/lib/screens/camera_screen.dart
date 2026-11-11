@@ -12,6 +12,7 @@ import '../settings.dart';
 import '../sky_math.dart';
 import '../state.dart';
 import '../widgets/camera_hints.dart';
+import '../widgets/glass.dart';
 import '../widgets/provider_picker.dart';
 import 'result_screen.dart';
 import 'settings_screen.dart';
@@ -203,27 +204,96 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         _startSensors(next);
       }
     });
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: const Text('NightSky'),
-        actions: [
-          IconButton(
-            tooltip: 'Settings',
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () => Navigator.of(context)
-                .push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen())),
-          ),
-        ],
+    final ready = _cameraError == null && (_controller?.value.isInitialized ?? false);
+    // Full screen: the camera feed runs edge to edge (under the status and navigation bars)
+    // and every control floats on top of it.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.transparent,
       ),
-      body: SafeArea(
-        child: Column(children: [
-          ..._banners(),
-          Expanded(child: _preview()),
-          _controls(),
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(fit: StackFit.expand, children: [
+          _preview(),
+          // Soft shading at the top and bottom keeps the controls readable on bright scenes.
+          const IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0x99000000), Color(0x00000000), Color(0x00000000), Color(0xB3000000)],
+                  stops: [0, 0.2, 0.7, 1],
+                ),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Column(children: [
+              _topBar(),
+              ..._banners().map((b) =>
+                  Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 8), child: b)),
+              if (_showTips && ready)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: CaptureTips(onClose: () => setState(() => _showTips = false)),
+                ),
+              const Spacer(),
+              if (ready && _orientation.hasData) _readouts(),
+              _controls(),
+            ]),
+          ),
         ]),
       ),
     );
+  }
+
+  Widget _topBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 12, 12),
+      child: Row(children: [
+        const Icon(Icons.auto_awesome, color: Colors.white, size: 22),
+        const SizedBox(width: 8),
+        Text(
+          'NightSky',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: Colors.white, fontWeight: FontWeight.w600, letterSpacing: 0.5),
+        ),
+        const Spacer(),
+        GlassIconButton(
+          tooltip: _showTips ? 'Hide tips' : 'Show tips',
+          icon: Icons.lightbulb_outline,
+          selected: _showTips,
+          onPressed: () => setState(() => _showTips = !_showTips),
+        ),
+        const SizedBox(width: 8),
+        GlassIconButton(
+          tooltip: 'Settings',
+          icon: Icons.settings_outlined,
+          onPressed: () => Navigator.of(context)
+              .push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen())),
+        ),
+      ]),
+    );
+  }
+
+  Widget _readouts() {
+    final settings = ref.watch(settingsProvider);
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      if (settings.showPointingReadout && _pointing != null)
+        PointingReadout(
+          altitudeDeg: _pointing!.altitude,
+          azimuthDeg: _pointing!.azimuth,
+          usingGyroscope: _orientation.mode == SensorMode.gyro,
+        ),
+      const SizedBox(height: 8),
+      SteadyIndicator(
+        shakeDeg: _shake,
+        maxShakeDeg: settings.steadiness.maxShakeDeg,
+        autoCaptureProgress: _autoCaptureProgress,
+      ),
+    ]);
   }
 
   List<Widget> _banners() {
@@ -280,9 +350,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.no_photography_outlined, size: 56),
+            const Icon(Icons.no_photography_outlined, size: 56, color: Colors.white70),
             const SizedBox(height: 16),
-            Text(_cameraError!, textAlign: TextAlign.center),
+            Text(_cameraError!,
+                textAlign: TextAlign.center, style: const TextStyle(color: Colors.white)),
             const SizedBox(height: 16),
             FilledButton(
               onPressed: _cameraPermissionDenied ? Geolocator.openAppSettings : _initCamera,
@@ -296,36 +367,20 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     if (controller == null || !controller.value.isInitialized) {
       return const Center(child: CircularProgressIndicator());
     }
-    return Stack(fit: StackFit.expand, children: [
-      Center(child: CameraPreview(controller)),
-      if (_showTips)
-        Positioned(
-          left: 12,
-          right: 12,
-          top: 12,
-          child: CaptureTips(onClose: () => setState(() => _showTips = false)),
+    // previewSize is reported in sensor (landscape) orientation; the app is portrait-only,
+    // so swap it and scale the feed to cover the whole screen (cropping the overflow).
+    final size = controller.value.previewSize;
+    if (size == null) return Center(child: CameraPreview(controller));
+    return ClipRect(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: size.shortestSide,
+          height: size.longestSide,
+          child: CameraPreview(controller),
         ),
-      if (_orientation.hasData)
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 12,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            if (ref.watch(settingsProvider).showPointingReadout && _pointing != null)
-              PointingReadout(
-                altitudeDeg: _pointing!.altitude,
-                azimuthDeg: _pointing!.azimuth,
-                usingGyroscope: _orientation.mode == SensorMode.gyro,
-              ),
-            const SizedBox(height: 6),
-            SteadyIndicator(
-              shakeDeg: _shake,
-              maxShakeDeg: ref.watch(settingsProvider).steadiness.maxShakeDeg,
-              autoCaptureProgress: _autoCaptureProgress,
-            ),
-          ]),
-        ),
-    ]);
+      ),
+    );
   }
 
   Widget _controls() {
@@ -336,32 +391,65 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             .map((p) => p.name)
             .firstOrNull ??
         'Image source';
+    final enabled = _controller != null && !_capturing;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
       child: Row(children: [
         Expanded(
           child: Align(
             alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => showProviderPicker(context, ref),
-              icon: const Icon(Icons.layers_outlined, size: 18),
-              label: Text(providerName, overflow: TextOverflow.ellipsis),
+            child: Glass(
+              borderRadius: const BorderRadius.all(Radius.circular(999)),
+              child: InkWell(
+                onTap: () => showProviderPicker(context, ref),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.layers_outlined, size: 18, color: Colors.white),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(providerName,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelLarge
+                              ?.copyWith(color: Colors.white)),
+                    ),
+                  ]),
+                ),
+              ),
             ),
           ),
         ),
-        SizedBox(
-          width: 76,
-          height: 76,
+        const SizedBox(width: 12),
+        // Shutter: white ring around a solid disc, the familiar camera-app look.
+        Container(
+          width: 84,
+          height: 84,
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 4),
+          ),
           child: FilledButton(
             key: const Key('shutter'),
-            style: FilledButton.styleFrom(shape: const CircleBorder(), padding: EdgeInsets.zero),
-            onPressed: _controller == null || _capturing ? null : _capture,
+            style: FilledButton.styleFrom(
+              shape: const CircleBorder(),
+              padding: EdgeInsets.zero,
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+              disabledBackgroundColor: Colors.white38,
+            ),
+            onPressed: enabled ? _capture : null,
             child: _capturing
                 ? const SizedBox(
-                    width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 3))
-                : const Icon(Icons.camera_alt, size: 34),
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(strokeWidth: 3, color: Colors.black))
+                : const Icon(Icons.camera_alt, size: 30),
           ),
         ),
+        const SizedBox(width: 12),
         const Expanded(child: SizedBox()),
       ]),
     );

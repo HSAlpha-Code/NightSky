@@ -317,7 +317,10 @@ void main() {
       await tester.tap(find.text(curatedSourceLabel));
       await settle(tester);
       expect(find.byType(CuratedViewer), findsOneWidget);
-      expect(find.text('Caption 0'), findsOneWidget);
+      expect(find.text('Caption 0'), findsOneWidget); // captions are shown by default
+      await tester.tap(find.byTooltip('Hide details'));
+      await settle(tester);
+      expect(find.text('Caption 0'), findsNothing);
       expect(find.byKey(const Key('curated-dot-1')), findsOneWidget);
       await leave(tester);
     });

@@ -5,6 +5,7 @@ import '../models.dart';
 import '../state.dart';
 import '../widgets/compare_view.dart';
 import '../widgets/landmark_overlay.dart';
+import '../widgets/magic_reveal.dart';
 import '../widgets/provider_picker.dart';
 import '../widgets/result_widgets.dart';
 import 'landmark_detail_screen.dart';
@@ -113,19 +114,23 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       Expanded(
         child: Stack(fit: StackFit.expand, children: [
           if (s.skyImage != null)
-            CompareView(
-              key: _compareKey,
-              original: original,
-              replacement: MemoryImage(s.skyImage!.bytes),
-              aspectRatio: aspect,
-              initialSplit: _split,
-              overlayBuilder: _showMarkers && s.landmarks != null && !s.busy
-                  ? (scale) => LandmarkOverlay(
-                        landmarks: s.landmarks!.landmarks,
-                        scale: scale,
-                        onTap: (lm) => _openLandmark(lm, s.skyImage!.providerKey),
-                      )
-                  : null,
+            // Each newly fetched survey image ripples in with a burst of shifting colours.
+            MagicReveal(
+              trigger: s.skyImage,
+              child: CompareView(
+                key: _compareKey,
+                original: original,
+                replacement: MemoryImage(s.skyImage!.bytes),
+                aspectRatio: aspect,
+                initialSplit: _split,
+                overlayBuilder: _showMarkers && s.landmarks != null && !s.busy
+                    ? (scale) => LandmarkOverlay(
+                          landmarks: s.landmarks!.landmarks,
+                          scale: scale,
+                          onTap: (lm) => _openLandmark(lm, s.skyImage!.providerKey),
+                        )
+                    : null,
+              ),
             )
           else
             Center(

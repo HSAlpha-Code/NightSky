@@ -14,6 +14,7 @@ import 'package:night_sky/screens/result_screen.dart';
 import 'package:night_sky/state.dart';
 import 'package:night_sky/widgets/compare_view.dart';
 import 'package:night_sky/widgets/landmark_overlay.dart';
+import 'package:night_sky/widgets/magic_reveal.dart';
 import 'package:night_sky/widgets/provider_picker.dart';
 
 import 'fake_backend.dart';
@@ -283,6 +284,7 @@ void main() {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       await tester.pump();
     }
+    // Facts and credit are shown by default.
     // The detail list scrolls: facts and credit sit below the square image in a 800x600 test view.
     await tester.drag(find.byType(ListView).first, const Offset(0, -600));
     await tester.pump();
@@ -325,6 +327,89 @@ void main() {
     await tester.tap(find.byTooltip('Hide landmarks'));
     await tester.pump();
     expect(find.byType(LandmarkMarker), findsNothing);
+  });
+
+  testWidgets('magic reveal plays when a new image arrives, then gets out of the way',
+      (tester) async {
+    var taps = 0;
+    Widget build(Object? trigger) => MaterialApp(
+          home: SizedBox(
+            width: 300,
+            height: 400,
+            child: MagicReveal(
+              trigger: trigger,
+              child: TextButton(onPressed: () => taps++, child: const Text('image')),
+            ),
+          ),
+        );
+
+    await tester.pumpWidget(build(null));
+    expect(find.byKey(const Key('magic-reveal')), findsNothing); // nothing to reveal yet
+
+    final first = Object();
+    await tester.pumpWidget(build(first));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const Key('magic-reveal')), findsOneWidget);
+    // The image underneath stays usable while the ripple plays.
+    await tester.tap(find.text('image'));
+    expect(taps, 1);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('magic-reveal')), findsNothing);
+
+    await tester.pumpWidget(build(first)); // same image: no replay
+    expect(find.byKey(const Key('magic-reveal')), findsNothing);
+    await tester.pumpWidget(build(Object())); // another image: plays again
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const Key('magic-reveal')), findsOneWidget);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('magic reveal is skipped with reduced motion', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: MediaQuery(
+        data: const MediaQueryData(disableAnimations: true),
+        child: MagicReveal(trigger: Object(), child: const Text('image')),
+      ),
+    ));
+    await tester.pump();
+    expect(find.byKey(const Key('magic-reveal')), findsNothing);
+    expect(find.text('image'), findsOneWidget);
+  });
+
+  testWidgets('landmark detail: facts are hidden until "Show details" is tapped',
+      (tester) async {
+    // Phone-shaped view, so the toggle under the square image is laid out.
+    tester.view.physicalSize = const Size(400, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final lm = Landmark.fromJson((landmarksJson()['landmarks'] as List).first);
+    final backend = FakeBackend()..json('GET /api/providers', providersJson);
+    backend.hang('GET /api/landmark-detail');
+    final container = ProviderContainer(overrides: [
+      apiClientProvider.overrideWithValue(ApiClient('http://test', dio: fakeDio(backend))),
+    ]);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(home: LandmarkDetailScreen(landmark: lm)),
+    ));
+    await tester.pump();
+
+    // Shown by default. The image is still loading (spinner never settles), so pump past the
+    // 250 ms animation after each toggle.
+    expect(find.byKey(const Key('landmark-details')), findsOneWidget);
+    expect(find.text('M42, NGC 1976'), findsOneWidget);
+    expect(find.text('Hide details'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('details-toggle')));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byKey(const Key('landmark-details')), findsNothing);
+    expect(find.text('M42, NGC 1976'), findsNothing);
+    expect(find.text('Show details'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Show details')); // the app-bar button toggles too
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('M42, NGC 1976'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox()); // cancels the hanging request
   });
 
   test('formatDistance', () {
