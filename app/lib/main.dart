@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'curated.dart';
 import 'screens/camera_screen.dart';
+import 'screens/sky_view_screen.dart';
 import 'settings.dart';
 
 Future<void> main() async {
@@ -13,11 +14,16 @@ Future<void> main() async {
   runApp(const ProviderScope(child: NightSkyApp()));
 }
 
-class NightSkyApp extends StatelessWidget {
+class NightSkyApp extends ConsumerWidget {
   const NightSkyApp({super.key});
 
   @override
-  Widget build(BuildContext context) => const NightSkyAppShell(home: CameraScreen());
+  Widget build(BuildContext context, WidgetRef ref) {
+    final startInSkyView = ref.watch(settingsProvider.select((s) => s.startInSkyView));
+    return NightSkyAppShell(
+      home: startInSkyView ? const SkyViewScreen() : const CameraScreen(),
+    );
+  }
 }
 
 /// Theme and app-wide settings (font size) around [home]; separate so tests can use it
