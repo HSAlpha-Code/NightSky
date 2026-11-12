@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../settings.dart';
 import 'astro_math.dart';
@@ -47,7 +48,41 @@ class SkyLayerVisibility {
         labels: labels ?? this.labels,
         horizon: horizon ?? this.horizon,
       );
+
+  @override
+  bool operator ==(Object other) =>
+      other is SkyLayerVisibility &&
+      other.milkyWay == milkyWay &&
+      other.stars == stars &&
+      other.constellations == constellations &&
+      other.solarSystem == solarSystem &&
+      other.deepSky == deepSky &&
+      other.labels == labels &&
+      other.horizon == horizon;
+
+  @override
+  int get hashCode => Object.hash(
+        milkyWay,
+        stars,
+        constellations,
+        solarSystem,
+        deepSky,
+        labels,
+        horizon,
+      );
 }
+
+/// Shared reactive state for Sky View layer toggles so both [SkyViewScreen] and any open
+/// modal bottom sheet (`SkyLayersSheet`) rebuild immediately on every tap.
+class SkyLayersNotifier extends Notifier<SkyLayerVisibility> {
+  @override
+  SkyLayerVisibility build() => const SkyLayerVisibility();
+
+  void update(SkyLayerVisibility Function(SkyLayerVisibility) change) => state = change(state);
+}
+
+final skyLayersProvider =
+    NotifierProvider<SkyLayersNotifier, SkyLayerVisibility>(SkyLayersNotifier.new);
 
 class _LabelCandidate {
   const _LabelCandidate({
