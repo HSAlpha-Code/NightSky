@@ -813,23 +813,20 @@ class SensorCalibrationSheet extends ConsumerWidget {
 // --- 5. Sky Layers, Quality & Credits Sheet ---------------------------------------------
 
 class SkyLayersSheet extends ConsumerWidget {
-  const SkyLayersSheet({
-    super.key,
-    required this.layers,
-    required this.onChanged,
-  });
-
-  final SkyLayerVisibility layers;
-  final ValueChanged<SkyLayerVisibility> onChanged;
+  const SkyLayersSheet({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final layers = ref.watch(skyLayersProvider);
+    final layersNotifier = ref.read(skyLayersProvider.notifier);
     final s = ref.watch(settingsProvider);
-    final notifier = ref.read(settingsProvider.notifier);
+    final settingsNotifier = ref.read(settingsProvider.notifier);
 
-    Widget chip(String label, bool on, ValueChanged<bool> toggle) => FilterChip(
+    Widget chip(String keyName, String label, bool on, ValueChanged<bool> toggle) => FilterChip(
+          key: Key('layer-chip-$keyName'),
           label: Text(label),
           selected: on,
+          showCheckmark: true,
           onSelected: toggle,
         );
 
@@ -840,45 +837,81 @@ class SkyLayersSheet extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Sky layers & display', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Sky Layers & Display',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Close',
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 6,
               children: [
-                chip('Milky Way', layers.milkyWay,
-                    (v) => onChanged(layers.copyWith(milkyWay: v))),
-                chip('Stars', layers.stars, (v) => onChanged(layers.copyWith(stars: v))),
-                chip('Constellations', layers.constellations,
-                    (v) => onChanged(layers.copyWith(constellations: v))),
-                chip('Sun, Moon & planets', layers.solarSystem,
-                    (v) => onChanged(layers.copyWith(solarSystem: v))),
-                chip('Deep-sky objects', layers.deepSky,
-                    (v) => onChanged(layers.copyWith(deepSky: v))),
-                chip('Labels', layers.labels, (v) => onChanged(layers.copyWith(labels: v))),
-                chip('Horizon & compass', layers.horizon,
-                    (v) => onChanged(layers.copyWith(horizon: v))),
-                chip('Red night vision', s.nightVision,
-                    (v) => notifier.update((st) => st.copyWith(nightVision: v))),
+                chip('milky-way', 'Milky Way', layers.milkyWay,
+                    (v) => layersNotifier.update((l) => l.copyWith(milkyWay: v))),
+                chip('stars', 'Stars', layers.stars,
+                    (v) => layersNotifier.update((l) => l.copyWith(stars: v))),
+                chip('constellations', 'Constellations', layers.constellations,
+                    (v) => layersNotifier.update((l) => l.copyWith(constellations: v))),
+                chip('solar-system', 'Sun, Moon & Planets', layers.solarSystem,
+                    (v) => layersNotifier.update((l) => l.copyWith(solarSystem: v))),
+                chip('deep-sky', 'Deep-Sky Objects', layers.deepSky,
+                    (v) => layersNotifier.update((l) => l.copyWith(deepSky: v))),
+                chip('labels', 'Labels', layers.labels,
+                    (v) => layersNotifier.update((l) => l.copyWith(labels: v))),
+                chip('horizon', 'Horizon & Compass', layers.horizon,
+                    (v) => layersNotifier.update((l) => l.copyWith(horizon: v))),
+                chip('night-vision', 'Red Night Vision', s.nightVision,
+                    (v) => settingsNotifier.update((st) => st.copyWith(nightVision: v))),
               ],
             ),
             const SizedBox(height: 16),
-            Text('Graphics quality', style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              children: [
-                for (final q in SkyQuality.values)
-                  ChoiceChip(
-                    label: Text(q.label),
-                    selected: s.skyQuality == q,
-                    onSelected: (_) => notifier.update((st) => st.copyWith(skyQuality: q)),
-                  ),
-              ],
+            Text('Graphics Quality', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+            // Full-width SegmentedButton keeps constant width and height during selection
+            // transitions, preventing chip-wrap reflows that made the panel jump.
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<SkyQuality>(
+                key: const Key('sky-quality-segmented'),
+                segments: [
+                  for (final q in SkyQuality.values)
+                    ButtonSegment<SkyQuality>(
+                      value: q,
+                      label: Text(q.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ),
+                ],
+                selected: {s.skyQuality},
+                onSelectionChanged: (sel) =>
+                    settingsNotifier.update((st) => st.copyWith(skyQuality: sel.first)),
+              ),
             ),
-            const SizedBox(height: 4),
-            Text(s.skyQuality.description, style: Theme.of(context).textTheme.bodySmall),
-            const Divider(height: 24),
+            const SizedBox(height: 6),
+            // Fixed 2-line height keeps the modal sheet stationary across short/long descriptions.
+            SizedBox(
+              height: 36,
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: Text(
+                  s.skyQuality.description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ),
+            const Divider(height: 20),
             Text(
               'Credits: All-sky Milky Way panorama © Axel Mellinger (PASP 121, 1180) via NASA '
               'SkyView. Stars & 88 IAU constellation figures from ESA Hipparcos / d3-celestial '

@@ -73,8 +73,7 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
   bool _timeExpanded = false;
   bool _timelapsePlaying = false;
 
-  // Sky layers, selection, and directional "Find object" guide.
-  SkyLayerVisibility _layers = const SkyLayerVisibility();
+  // Selection and directional "Find object" guide.
   SkyObject? _selectedObject;
   SkyObject? _guideTarget;
 
@@ -436,10 +435,7 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
       context: context,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF10131C),
-      builder: (_) => SkyLayersSheet(
-        layers: _layers,
-        onChanged: (next) => setState(() => _layers = next),
-      ),
+      builder: (_) => const SkyLayersSheet(),
     );
   }
 
@@ -453,7 +449,8 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
     });
 
     final settings = ref.watch(settingsProvider);
-    final panorama = ref.watch(mellingerImageProvider).value;
+    final layers = ref.watch(skyLayersProvider);
+    final panorama = ref.watch(mellingerImageProvider);
     final shaderProgram = ref.watch(skyShaderProgramProvider).value;
     final catalog = ref.watch(skyCatalogProvider).value;
     final curatedIndex = ref.watch(curatedIndexProvider);
@@ -469,7 +466,7 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
     final sceneRenderer = SkySceneRenderer(
       camera: camera,
       quality: settings.skyQuality,
-      layers: _layers,
+      layers: layers,
       nightVision: settings.nightVision,
       catalog: catalog,
       solarSystem: solar,
@@ -535,8 +532,8 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
                         panorama: panorama,
                         shaderProgram: shaderProgram,
                         sunAltitudeDeg: solar.sunAltitudeDeg,
-                        showMilkyWay: _layers.milkyWay,
-                        showHorizon: _layers.horizon,
+                        showMilkyWay: layers.milkyWay,
+                        showHorizon: layers.horizon,
                         nightVision: settings.nightVision,
                         overlayPaint: sceneRenderer.paint,
                       ),
@@ -585,7 +582,7 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
                             const Spacer(),
                             IconButton(
                               key: const Key('sky-layers-button'),
-                              tooltip: 'Layers & credits',
+                              tooltip: 'Sky Layers & Display',
                               icon: const Icon(Icons.tune),
                               onPressed: _openLayersSheet,
                             ),

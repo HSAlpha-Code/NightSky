@@ -11,10 +11,17 @@ import 'package:night_sky/settings.dart';
 import 'package:night_sky/sky_view/astro_math.dart';
 import 'package:night_sky/sky_view/panorama_loader.dart';
 import 'package:night_sky/sky_view/sky_catalog.dart';
+import 'package:night_sky/sky_view/sky_overlay_painter.dart';
+import 'package:night_sky/sky_view/sky_sheets.dart';
 import 'package:night_sky/state.dart';
 import 'package:night_sky/widgets/curated_viewer.dart';
 
 import 'fake_backend.dart';
+
+class _NullPanoramaNotifier extends MellingerPanoramaNotifier {
+  @override
+  MellingerPanorama? build() => null;
+}
 
 void main() {
   late SkyCatalog catalog;
@@ -39,7 +46,7 @@ void main() {
         cacheStoreProvider.overrideWithValue(MemoryCacheStore()),
         apiClientProvider.overrideWithValue(ApiClient('http://test', dio: fakeDio(b))),
         skyCatalogProvider.overrideWith((_) async => catalog),
-        mellingerImageProvider.overrideWith((_) async => null),
+        mellingerImageProvider.overrideWith(_NullPanoramaNotifier.new),
         skyShaderProgramProvider.overrideWith((_) async => null),
       ],
     );
@@ -280,10 +287,43 @@ void main() {
     await tester.tap(find.byKey(const Key('sky-layers-button')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
-    expect(find.text('Sky layers & display'), findsOneWidget);
+    expect(find.text('Sky Layers & Display'), findsOneWidget);
+    expect(find.text('Graphics Quality'), findsOneWidget);
     expect(find.textContaining('Axel Mellinger'), findsWidgets);
     expect(find.textContaining('BSD-3-Clause'), findsOneWidget);
 
+    // Toggling Milky Way, Stars, and Constellations updates the open sheet's chips live
+    // without needing to close and reopen the panel.
+    for (final (chipKey, readFlag) in <(String, bool Function(SkyLayerVisibility))>[
+      ('layer-chip-milky-way', (l) => l.milkyWay),
+      ('layer-chip-stars', (l) => l.stars),
+      ('layer-chip-constellations', (l) => l.constellations),
+    ]) {
+      final finder = find.byKey(Key(chipKey));
+      expect(tester.widget<FilterChip>(finder).selected, isTrue, reason: chipKey);
+      await tester.tap(finder);
+      await tester.pump();
+      expect(tester.widget<FilterChip>(finder).selected, isFalse, reason: '$chipKey off');
+      expect(readFlag(c.read(skyLayersProvider)), isFalse);
+      await tester.tap(finder);
+      await tester.pump();
+      expect(tester.widget<FilterChip>(finder).selected, isTrue, reason: '$chipKey back on');
+      expect(readFlag(c.read(skyLayersProvider)), isTrue);
+    }
+
+    // Switching Graphics Quality keeps the SkyLayersSheet height completely stable (no jump).
+    final initialHeight = tester.getSize(find.byType(SkyLayersSheet)).height;
+    for (final label in ['Power saver', 'Max detail', 'Balanced']) {
+      await tester.tap(find.text(label));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        tester.getSize(find.byType(SkyLayersSheet)).height,
+        closeTo(initialHeight, 0.01),
+        reason: 'Panel height should not jump when selecting $label',
+      );
+    }
+
     await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 20));
   });
 }

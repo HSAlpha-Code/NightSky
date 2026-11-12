@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -77,11 +79,57 @@ Future<ui.FragmentProgram?> loadSkyShaderProgram() async {
 
 final skyShaderProgramProvider = FutureProvider<ui.FragmentProgram?>((ref) => loadSkyShaderProgram());
 
-final mellingerImageProvider = FutureProvider<MellingerPanorama?>((ref) async {
-  final quality = ref.watch(settingsProvider.select((s) => s.skyQuality));
-  final pano = await decodeMellingerPanorama(quality);
-  if (pano != null) {
-    ref.onDispose(pano.dispose);
+/// Manages the active [MellingerPanorama] across [SkyQuality] changes without ever exposing a
+/// disposed `ui.Image` while a new resolution is decoding in the background.
+class MellingerPanoramaNotifier extends Notifier<MellingerPanorama?> {
+  int _generation = 0;
+  MellingerPanorama? _current;
+  bool _disposed = false;
+
+  @override
+  MellingerPanorama? build() {
+    ref.onDispose(() {
+      _disposed = true;
+      _generation++;
+      final old = _current;
+      _current = null;
+      if (old != null) _retireSafely(old);
+    });
+
+    ref.listen<SkyQuality>(
+      settingsProvider.select((s) => s.skyQuality),
+      (prev, next) {
+        if (prev != next) unawaited(_loadQuality(next));
+      },
+      fireImmediately: true,
+    );
+
+    return _current;
   }
-  return pano;
-});
+
+  Future<void> _loadQuality(SkyQuality quality) async {
+    final gen = ++_generation;
+    final next = await decodeMellingerPanorama(quality);
+    if (_disposed || !ref.mounted || gen != _generation) {
+      next?.dispose();
+      return;
+    }
+    final previous = _current;
+    _current = next;
+    state = next;
+    if (previous != null && !identical(previous, next)) {
+      _retireSafely(previous);
+    }
+  }
+
+  static void _retireSafely(MellingerPanorama old) {
+    try {
+      SchedulerBinding.instance.addPostFrameCallback((_) => old.dispose());
+    } catch (_) {
+      old.dispose();
+    }
+  }
+}
+
+final mellingerImageProvider =
+    NotifierProvider<MellingerPanoramaNotifier, MellingerPanorama?>(MellingerPanoramaNotifier.new);
