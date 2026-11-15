@@ -57,10 +57,13 @@ Future<void> settle(WidgetTester tester) async {
 }
 
 /// A working survey close-up, so the detail screen's other source doesn't fail and retry.
-void withDetailImage(FakeBackend backend) => backend.json('GET /api/landmark-detail', {
+void withDetailImage(FakeBackend backend,
+        {List<String> availableViews = const ['jwst', 'hst', 'survey']}) =>
+    backend.json('GET /api/landmark-detail', {
       'landmark': {},
       'view': 'auto',
       'image_source': 'survey',
+      'available_views': availableViews,
       'credit': 'Survey',
       'caption': '',
       'fov': 0.2,
@@ -302,7 +305,9 @@ void main() {
     testWidgets('hidden for a body without highlights', (tester) async {
       await open(tester, alnilam, ['NGC1976']);
       expect(find.text(curatedSourceLabel), findsNothing);
-      expect(find.text('Best'), findsOneWidget);
+      expect(find.text('DSS2 Color'), findsOneWidget);
+      expect(find.text('Webb'), findsNothing);
+      expect(find.text('Hubble'), findsNothing);
       await leave(tester);
     });
 

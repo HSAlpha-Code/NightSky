@@ -124,7 +124,7 @@ class SessionNotifier extends Notifier<SessionState> {
       final photo = await compute(preparePhotoIsolate, rawPhoto);
       if (run != _run) return;
       state = state.copyWith(stage: Stage.solving, photo: photo);
-      final solve = await _api.solve(photo.jpeg, meta);
+      final solve = await _api.solve(photo.jpeg, meta.forPhotoSize(photo.width, photo.height));
       if (run != _run) return;
       state = state.copyWith(stage: Stage.fetchingImage, solve: solve);
       unawaited(_loadLandmarks(run));

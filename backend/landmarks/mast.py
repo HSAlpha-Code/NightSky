@@ -16,9 +16,8 @@ from config.http import ExternalServiceError, http_get, http_post
 
 log = logging.getLogger(__name__)
 
-COLLECTIONS = ("HST", "JWST", "CHANDRA")
-COLLECTION_NAMES = {"HST": "Hubble Space Telescope", "JWST": "James Webb Space Telescope",
-                    "CHANDRA": "Chandra X-ray Observatory"}
+COLLECTIONS = ("JWST", "HST")
+COLLECTION_NAMES = {"HST": "Hubble Space Telescope", "JWST": "James Webb Space Telescope"}
 RESULT_TTL = 30 * 24 * 3600      # previews don't change often
 FAILED_TTL = 10 * 60             # retry a failed lookup after 10 minutes
 # Search cone, degrees. Kept small: big cones over busy regions (M42 has thousands of HST
@@ -42,8 +41,8 @@ def _key(landmark_id: str) -> str:
 
 
 def pick_best(rows: list[dict]) -> dict | None:
-    """Best preview: JWST > HST > Chandra, then longest exposure."""
-    order = {c: i for i, c in enumerate(("JWST", "HST", "CHANDRA"))}
+    """Best preview: JWST > HST, then longest exposure."""
+    order = {c: i for i, c in enumerate(COLLECTIONS)}
     calibration = ("DARK", "BIAS", "FLAT", "EARTH-CALIB", "INTFLAT", "KSPOTS")
     usable = [r for r in rows if r.get("jpegURL") and r.get("obs_collection") in order
               and not any(c in str(r.get("target_name", "")).upper() for c in calibration)]
@@ -112,6 +111,11 @@ def _executor() -> ThreadPoolExecutor:
             _pool = ThreadPoolExecutor(max_workers=settings.MAST_WORKERS,
                                        thread_name_prefix="mast")
         return _pool
+
+
+def is_known_empty(landmark) -> bool:
+    """True when MAST was already checked and confirmed no telescope preview exists."""
+    return cache.get(_key(landmark.id)) == NO_PREVIEW
 
 
 def status(landmark) -> dict | None | bool:

@@ -166,6 +166,31 @@ double fovFromOptics({
   return 2 * math.atan(side / (2 * focalLengthMm)) * 180 / math.pi;
 }
 
+/// Infers Android Surface rotation (0, 90, 180, 270) describing which device axis points
+/// towards image-up for an upright prepared photo.
+///
+/// 0 -> +Y (portrait), 90 -> +X (landscape, earpiece left), 180 -> -Y, 270 -> -X (landscape,
+/// earpiece right). Matches `image_rotation_deg` in `backend/solver/astro.py`.
+int inferImageRotationDeg({
+  required bool landscapePhoto,
+  List<double>? quaternion,
+  int? displayRotationDeg,
+}) {
+  if (!landscapePhoto) {
+    if (displayRotationDeg == 180) return 180;
+    return 0;
+  }
+  if (displayRotationDeg == 90 || displayRotationDeg == 270) {
+    return displayRotationDeg!;
+  }
+  if (quaternion != null) {
+    final r = quaternionToMatrix(quaternion);
+    // r[6] is (R^T * worldUp).x = dot(device +X, world Up).
+    if (r[6].abs() > 1e-3) return r[6] >= 0 ? 90 : 270;
+  }
+  return 90;
+}
+
 /// Right ascension in degrees -> "05h 35m 17s".
 String formatRa(double raDeg) {
   final totalSeconds = ((raDeg % 360) / 15 * 3600).round() % (24 * 3600);

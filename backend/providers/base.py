@@ -13,6 +13,7 @@ class ImageProvider(ABC):
     wavelength: str = ""     # e.g. "optical", "infrared"
     coverage: str = ""       # e.g. "all-sky", "dec > -30"
     all_sky: bool = True     # used to pick a fallback when supports() is False
+    supports_detail: bool = True  # suitable for sub-degree star/object close-ups
     credit: str = ""
     service: str = ""        # upstream service id; fallback prefers a different service
 
@@ -35,6 +36,7 @@ class ImageProvider(ABC):
             "wavelength": self.wavelength,
             "coverage": self.coverage,
             "all_sky": self.all_sky,
+            "supports_detail": self.supports_detail,
             "service": self.service,
             "credit": self.credit,
         }

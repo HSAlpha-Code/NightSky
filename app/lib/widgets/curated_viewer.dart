@@ -88,24 +88,26 @@ class _CuratedViewerState extends State<CuratedViewer> {
     if (items.isEmpty) return const SizedBox.shrink();
     final current = items[_page.clamp(0, items.length - 1)];
     final multiple = items.length > 1;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      AspectRatio(
-        aspectRatio: 4 / 3,
-        child: PageView.builder(
-          key: const Key('curated-pages'),
-          controller: _controller,
-          // One image: nothing to swipe to.
-          physics: multiple ? const PageScrollPhysics() : const NeverScrollableScrollPhysics(),
-          allowImplicitScrolling: true,
-          itemCount: items.length,
-          onPageChanged: _changed,
-          itemBuilder: (context, i) => _CuratedImage(
-            key: ValueKey('curated-image-$i'),
-            url: items[i].imageUrl,
-            label: items[i].title.isNotEmpty ? items[i].title : 'Image ${i + 1} of ${items.length}',
-          ),
-        ),
+    final screenH = MediaQuery.sizeOf(context).height;
+    final pager = PageView.builder(
+      key: const Key('curated-pages'),
+      controller: _controller,
+      // One image: nothing to swipe to.
+      physics: multiple ? const PageScrollPhysics() : const NeverScrollableScrollPhysics(),
+      allowImplicitScrolling: true,
+      itemCount: items.length,
+      onPageChanged: _changed,
+      itemBuilder: (context, i) => _CuratedImage(
+        key: ValueKey('curated-image-$i'),
+        url: items[i].imageUrl,
+        label: items[i].title.isNotEmpty ? items[i].title : 'Image ${i + 1} of ${items.length}',
       ),
+    );
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (screenH < 480)
+        SizedBox(height: math.max(180.0, screenH * 0.58), child: pager)
+      else
+        AspectRatio(aspectRatio: 4 / 3, child: pager),
       if (multiple)
         Padding(
           padding: const EdgeInsets.only(top: 6),

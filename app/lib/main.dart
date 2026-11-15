@@ -9,8 +9,7 @@ import 'settings.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Portrait only: the orientation maths assumes the top of the phone is "up" in the photo.
-  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  await SystemChrome.setPreferredOrientations(ScreenOrientationMode.auto.orientations);
   runApp(const ProviderScope(child: NightSkyApp()));
 }
 
@@ -26,16 +25,35 @@ class NightSkyApp extends ConsumerWidget {
   }
 }
 
-/// Theme and app-wide settings (font size) around [home]; separate so tests can use it
-/// without the camera.
-class NightSkyAppShell extends ConsumerWidget {
+/// Theme and app-wide settings (font size, screen orientation) around [home]; separate so
+/// tests can use it without the camera.
+class NightSkyAppShell extends ConsumerStatefulWidget {
   const NightSkyAppShell({super.key, required this.home});
 
   final Widget home;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NightSkyAppShell> createState() => _NightSkyAppShellState();
+}
+
+class _NightSkyAppShellState extends ConsumerState<NightSkyAppShell> {
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setPreferredOrientations(ref.read(settingsProvider).orientationMode.orientations);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final fontScale = ref.watch(settingsProvider.select((s) => s.fontSize.scale));
+    ref.listen<ScreenOrientationMode>(
+      settingsProvider.select((s) => s.orientationMode),
+      (prev, next) {
+        if (prev != next) {
+          SystemChrome.setPreferredOrientations(next.orientations);
+        }
+      },
+    );
     // Download the curated-highlights index in the background (app start and whenever the
     // server address changes). Never blocks anything; failures are silent.
     ref.listen(curatedIndexProvider, (_, _) {});
@@ -59,7 +77,7 @@ class NightSkyAppShell extends ConsumerWidget {
         scaffoldBackgroundColor: Colors.black,
         useMaterial3: true,
       ),
-      home: home,
+      home: widget.home,
     );
   }
 }

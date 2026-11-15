@@ -440,7 +440,8 @@ class SkyCamera {
   final double longitudeDeg;
   final DateTime when;
 
-  /// Horizontal field of view in degrees.
+  /// Field of view along the shorter screen side in degrees (width in portrait, height in
+  /// landscape), keeping consistent angular scale when rotating between portrait and landscape.
   final double fovDeg;
   final double tanHalfFov;
 
@@ -456,7 +457,8 @@ class SkyCamera {
   late final Vec3 zenithGal;
 
   /// Build camera from a phone orientation quaternion `[x, y, z, w]` (device -> magnetic ENU),
-  /// applying [declinationDeg] to align with true astronomical north.
+  /// applying [declinationDeg] to align with true astronomical north and [screenRotationDeg]
+  /// (Android Surface rotation: 0, 90, 180, 270) to match the active portrait/landscape window.
   factory SkyCamera.fromSensorQuaternion({
     required List<double> quaternion,
     required double declinationDeg,
@@ -464,12 +466,19 @@ class SkyCamera {
     required double longitudeDeg,
     required DateTime when,
     required double fovDeg,
+    double screenRotationDeg = 0.0,
   }) {
     final r = quaternionToMatrix(quaternion);
-    // Device axes: +X right, +Y top of portrait screen, -Z rear viewing direction.
-    final rawRight = Vec3(r[0], r[3], r[6]);
-    final rawUp = Vec3(r[1], r[4], r[7]);
+    // Hardware device axes: +X right, +Y top of natural portrait screen, -Z rear viewing axis.
+    final devX = Vec3(r[0], r[3], r[6]);
+    final devY = Vec3(r[1], r[4], r[7]);
     final rawForward = Vec3(-r[2], -r[5], -r[8]);
+
+    final rotRad = screenRotationDeg * degToRad;
+    final cr = math.cos(rotRad);
+    final sr = math.sin(rotRad);
+    final rawRight = devX * cr - devY * sr;
+    final rawUp = devX * sr + devY * cr;
 
     final forward = rotateEnuClockwiseAboutUp(rawForward, declinationDeg).normalized;
     final upTemp = rotateEnuClockwiseAboutUp(rawUp, declinationDeg).normalized;
@@ -496,8 +505,9 @@ class SkyCamera {
     );
   }
 
-  /// Build an upright horizon-level camera looking towards ([altitudeDeg], [azimuthDeg]) for
-  /// manual touch drag mode or tests.
+  /// Build a camera looking towards ([altitudeDeg], [azimuthDeg]) for manual touch drag mode or
+  /// tests. Optional [rollDeg] preserves screen roll (e.g. ±90° when the phone is held sideways
+  /// with system auto-rotate locked to portrait) so entering manual mode never snaps to portrait.
   factory SkyCamera.fromAltAz({
     required double altitudeDeg,
     required double azimuthDeg,
@@ -505,18 +515,31 @@ class SkyCamera {
     required double longitudeDeg,
     required DateTime when,
     double fovDeg = 60.0,
+    double rollDeg = 0.0,
   }) {
     final clampedAlt = altitudeDeg.clamp(-89.8, 89.8);
     final forward = altAzToEnu(clampedAlt, azimuthDeg).normalized;
-    // Right = forward x worldUp keeps the horizon horizontal across all azimuths.
-    var right = forward.cross(Vec3.up);
-    if (right.length < 1e-6) {
+    // hRight = forward x worldUp keeps the horizon horizontal across all azimuths at rollDeg = 0.
+    var hRight = forward.cross(Vec3.up);
+    if (hRight.length < 1e-6) {
       final azRad = azimuthDeg * degToRad;
-      right = Vec3(math.cos(azRad), -math.sin(azRad), 0);
+      hRight = Vec3(math.cos(azRad), -math.sin(azRad), 0);
     } else {
-      right = right.normalized;
+      hRight = hRight.normalized;
     }
-    final up = right.cross(forward).normalized;
+    final hUp = hRight.cross(forward).normalized;
+
+    final Vec3 right;
+    final Vec3 up;
+    if (rollDeg == 0.0) {
+      right = hRight;
+      up = hUp;
+    } else {
+      final r = rollDeg * degToRad;
+      final c = math.cos(r), s = math.sin(r);
+      right = (hRight * c + hUp * s).normalized;
+      up = (hUp * c - hRight * s).normalized;
+    }
 
     final enuToIcrs = icrsToEnuMatrix(
       latitudeDeg: latitudeDeg,
@@ -539,6 +562,32 @@ class SkyCamera {
   ({double altitudeDeg, double azimuthDeg}) get centerAltAz => enuToAltAz(forwardEnu);
   ({double raDeg, double decDeg}) get centerRaDec => vecToRaDec(forwardIcrs);
 
+  /// Roll angle in degrees (-180, +180] of the sky's zenith direction on screen relative to
+  /// screen-up (`0` = horizon horizontal; `+90` = zenith towards screen right; `-90` = zenith
+  /// towards screen left).
+  double get screenRollDeg {
+    var hRight = forwardEnu.cross(Vec3.up);
+    if (hRight.length < 1e-6) return 0.0;
+    hRight = hRight.normalized;
+    final hUp = hRight.cross(forwardEnu).normalized;
+    final sinRoll = hUp.dot(rightEnu);
+    final cosRoll = hUp.dot(upEnu);
+    if (sinRoll.abs() < 1e-9 && cosRoll.abs() < 1e-9) return 0.0;
+    return math.atan2(sinRoll, cosRoll) * radToDeg;
+  }
+
+  /// Half-tangent of the horizontal (width) field of view for [size]. Equals [tanHalfFov] in
+  /// portrait (`width <= height`) and widens proportionally in landscape (`width > height`).
+  double horizontalTanHalfFov(Size size) {
+    if (size.width <= 0 || size.height <= 0 || size.width <= size.height) {
+      return tanHalfFov;
+    }
+    return tanHalfFov * (size.width / size.height);
+  }
+
+  /// Effective horizontal (screen-width) field of view in degrees for [size].
+  double horizontalFovDeg(Size size) => 2.0 * math.atan(horizontalTanHalfFov(size)) * radToDeg;
+
   /// Project an ICRS J2000 unit vector onto screen pixel coordinates for [size], or null if
   /// behind the camera (`z <= 0.02`).
   Offset? projectIcrs(Vec3 icrs, Size size) {
@@ -546,8 +595,8 @@ class SkyCamera {
     if (z <= 0.02) return null;
     final x = icrs.dot(rightIcrs) / (z * tanHalfFov);
     final y = icrs.dot(upIcrs) / (z * tanHalfFov);
-    final halfW = size.width * 0.5;
-    return Offset(halfW * (1.0 + x), size.height * 0.5 - halfW * y);
+    final refHalf = math.min(size.width, size.height) * 0.5;
+    return Offset(size.width * 0.5 + refHalf * x, size.height * 0.5 - refHalf * y);
   }
 
   /// Project a local ENU unit vector (e.g. horizon ring, cardinal points) onto [size].
@@ -556,15 +605,16 @@ class SkyCamera {
     if (z <= 0.02) return null;
     final x = enu.dot(rightEnu) / (z * tanHalfFov);
     final y = enu.dot(upEnu) / (z * tanHalfFov);
-    final halfW = size.width * 0.5;
-    return Offset(halfW * (1.0 + x), size.height * 0.5 - halfW * y);
+    final refHalf = math.min(size.width, size.height) * 0.5;
+    return Offset(size.width * 0.5 + refHalf * x, size.height * 0.5 - refHalf * y);
   }
 
   /// Unproject a screen tap [point] in [size] back into a unit ICRS J2000 ray direction.
   Vec3 unprojectToIcrs(Offset point, Size size) {
-    final halfW = size.width * 0.5;
-    final nx = (point.dx - halfW) / halfW;
-    final ny = (size.height * 0.5 - point.dy) / halfW;
+    final refHalf = math.min(size.width, size.height) * 0.5;
+    if (refHalf <= 0) return forwardIcrs;
+    final nx = (point.dx - size.width * 0.5) / refHalf;
+    final ny = (size.height * 0.5 - point.dy) / refHalf;
     return (forwardIcrs + rightIcrs * (nx * tanHalfFov) + upIcrs * (ny * tanHalfFov)).normalized;
   }
 
@@ -587,6 +637,13 @@ class SkyCamera {
     final dir = norm < 1e-6 ? const Offset(1, 0) : Offset(rx / norm, ry / norm);
     return (screenDir: dir, angleDeg: angle, onScreen: inBounds ? projected : null);
   }
+}
+
+/// Snaps a camera screen-roll angle in degrees to the nearest 90° quadrant (-90, 0, +90, 180).
+double snapRollToQuadrantDeg(double rollDeg) {
+  final q = (rollDeg / 90.0).round() * 90;
+  final wrapped = ((q % 360) + 360) % 360;
+  return wrapped > 180 ? (wrapped - 360).toDouble() : wrapped.toDouble();
 }
 
 double _wrap360(double deg) {

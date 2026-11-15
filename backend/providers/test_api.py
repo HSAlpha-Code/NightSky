@@ -22,16 +22,19 @@ class ProvidersEndpointTests(ApiTestCase):
     def test_lists_providers_with_metadata(self):
         resp = self.client.get("/api/providers")
         self.assertEqual(resp.status_code, 200)
-        body = resp.json()
+        body = self.client.get("/api/providers").json()
         self.assertEqual(body["default"], "dss2_color")
-        keys = {p["key"] for p in body["providers"]}
-        self.assertTrue({"dss2_color", "skyview_mellinger", "panstarrs"} <= keys)
-        for field in ("name", "description", "wavelength", "coverage", "all_sky", "credit"):
+        by_key = {p["key"]: p for p in body["providers"]}
+        self.assertEqual(set(by_key), {"dss2_color", "skyview_mellinger"})
+        self.assertTrue(by_key["dss2_color"]["supports_detail"])
+        self.assertFalse(by_key["skyview_mellinger"]["supports_detail"])
+        for field in ("name", "description", "wavelength", "coverage", "all_sky",
+                      "supports_detail", "credit"):
             self.assertIn(field, body["providers"][0])
 
 
 class SkyImageEndpointTests(ApiTestCase):
-    body = {"ra": 83.82, "dec": -5.39, "fov": 2.0, "rotation": 10, "width": 300, "height": 400}
+    body = {"ra": 83.82, "dec": -5.39, "fov": 20.0, "rotation": 10, "width": 300, "height": 400}
 
     @patch.object(Hips2FitsProvider, "fetch_cutout", return_value=JPEG)
     def test_returns_image_and_headers(self, mock_fetch):
@@ -41,7 +44,7 @@ class SkyImageEndpointTests(ApiTestCase):
         self.assertEqual(resp.content, JPEG)
         self.assertEqual(resp["X-Provider"], "dss2_color")
         self.assertEqual(resp["X-Fallback-Used"], "false")
-        mock_fetch.assert_called_once_with(83.82, -5.39, 2.0, 10.0, 300, 400)
+        mock_fetch.assert_called_once_with(83.82, -5.39, 20.0, 10.0, 300, 400)
 
     @patch.object(Hips2FitsProvider, "fetch_cutout", return_value=JPEG)
     def test_cached_second_request(self, mock_fetch):
@@ -53,7 +56,8 @@ class SkyImageEndpointTests(ApiTestCase):
     @patch.object(Hips2FitsProvider, "fetch_cutout", return_value=JPEG)
     def test_no_coverage_falls_back(self, *_):
         resp = self.client.post("/api/sky-image",
-                                {**self.body, "dec": -60, "provider": "panstarrs_hips"}, format="json")
+                                {**self.body, "fov": 0.5, "provider": "skyview_mellinger"},
+                                format="json")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp["X-Fallback-Used"], "true")
         self.assertEqual(resp["X-Fallback-Reason"], "NO_COVERAGE")

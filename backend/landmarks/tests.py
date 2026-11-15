@@ -170,18 +170,20 @@ class MastTests(SimpleTestCase):
     def setUp(self):
         cache.clear()
         caches['images'].clear()
+        mast._pending.clear()
 
-    def test_pick_best_prefers_jwst_then_exposure_and_skips_darks(self):
+    def test_pick_best_prefers_jwst_then_exposure_and_skips_darks_and_chandra(self):
         rows = [
             {"obs_collection": "HST", "jpegURL": "mast:a.jpg", "t_exptime": 900, "target_name": "M42"},
             {"obs_collection": "HST", "jpegURL": "mast:dark.jpg", "t_exptime": 9e9, "target_name": "DARK"},
             {"obs_collection": "JWST", "jpegURL": "mast:b.jpg", "t_exptime": 100, "target_name": "ORION"},
             {"obs_collection": "JWST", "jpegURL": None, "t_exptime": 5000},
+            {"obs_collection": "CHANDRA", "jpegURL": "mast:c.jpg", "t_exptime": 9e9, "target_name": "XRAY"},
         ]
         best = mast.pick_best(rows)
         self.assertEqual((best["collection"], best["jpeg_uri"]), ("JWST", "mast:b.jpg"))
         self.assertEqual(mast.pick_best(rows[:2])["jpeg_uri"], "mast:a.jpg")
-        self.assertIsNone(mast.pick_best([rows[1]]))
+        self.assertIsNone(mast.pick_best([rows[1], rows[4]]))
 
     def test_status_starts_background_lookup_then_returns_cached(self):
         lm = small_catalog().get("NGC1976")
@@ -263,6 +265,7 @@ class EndpointTests(SimpleTestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual((body["image_source"], body["view"]), ("jwst", "auto"))
+        self.assertEqual(body["available_views"], ["jwst", "survey"])
         self.assertIn("James Webb", body["credit"])
         self.assertIn("40% of the field", body["caption"])
         self.assertAlmostEqual(body["fov"], 0.2)
@@ -270,6 +273,27 @@ class EndpointTests(SimpleTestCase):
         self.assertEqual(body["landmark"]["messier"], 42)
         # The survey cutout used for colour covers the same framed field as the mosaic.
         self.assertEqual(sky.call_args.args[:3], (83.8, -5.4, 0.2))
+
+    @patch("landmarks.services.get_sky_image")
+    @patch("landmarks.mosaic.render")
+    @patch("landmarks.mosaic.locate")
+    def test_auto_view_reports_only_hst_when_jwst_unavailable_and_normalises_mellinger(
+        self, locate, render, sky
+    ):
+        cache.set("mast:NGC1976", {"jpeg_uri": "mast:m42.jpg"})
+        sky.return_value.data = _jpeg()
+        sky.return_value.provider.name = "DSS2 Color"
+        locate.side_effect = lambda mission, *a: (83.8, -5.4, 0.15) if mission == "hst" else None
+        render.return_value = mosaic.Mosaic(_jpeg(), ["Hubble ACS"], 0.55)
+        resp = self.client.get(
+            "/api/landmark-detail",
+            {"id": "NGC1976", "provider": "skyview_mellinger"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["image_source"], "hst")
+        self.assertEqual(body["available_views"], ["hst", "survey"])
+        self.assertEqual(sky.call_args.args[4], "dss2_color")
 
     @patch("landmarks.mosaic.locate", return_value=None)
     def test_forced_view_without_coverage_is_no_coverage(self, _):
@@ -282,17 +306,25 @@ class EndpointTests(SimpleTestCase):
         resp = self.client.get("/api/landmark-detail", {"id": "NGC1976", "view": "xray"})
         self.assertEqual(resp.status_code, 400)
 
+    def test_wide_field_only_provider_rejected_on_explicit_survey_closeup(self):
+        resp = self.client.get(
+            "/api/landmark-detail",
+            {"id": "NGC1976", "view": "survey", "provider": "skyview_mellinger"},
+        )
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.json()["error"]["code"], "NO_COVERAGE")
+
     @patch("landmarks.services.get_sky_image")
     @patch("landmarks.mosaic.locate")
     def test_survey_view_skips_telescopes(self, locate, sky):
         sky.return_value.data = _jpeg()
-        sky.return_value.provider.credit = "2MASS"
-        sky.return_value.provider.name = "2MASS Color"
+        sky.return_value.provider.credit = "DSS2"
+        sky.return_value.provider.name = "DSS2 Color"
         resp = self.client.get("/api/landmark-detail",
-                               {"id": "NGC1976", "view": "survey", "provider": "2mass_color"})
+                               {"id": "NGC1976", "view": "survey", "provider": "dss2_color"})
         self.assertEqual(resp.json()["image_source"], "survey")
         locate.assert_not_called()
-        self.assertEqual(sky.call_args.args[4], "2mass_color")
+        self.assertEqual(sky.call_args.args[4], "dss2_color")
 
     @patch("landmarks.services.get_sky_image")
     def test_detail_falls_back_to_survey_cutout(self, sky):
@@ -322,6 +354,20 @@ class MosaicTests(SimpleTestCase):
         self.assertGreater(dec, 20.0)                  # moved north (up)
         self.assertLess(ra, 100.0)                     # moved west (right = west)
         self.assertIsNone(mosaic.frame_field(np.zeros((10, 10), bool), 1, 2, 1, 0.03, 1))
+
+    def test_locate_rejects_off_target_stray_frames_and_accepts_centered_frames(self):
+        off_target = np.zeros((192, 192), bool)
+        off_target[10:45, 10:45] = True  # stray parallel frame away from the target at (96, 96)
+        rgb = np.full((192, 192, 3), 120, np.uint8)
+        layer = mosaic.MISSIONS["jwst"][0]
+        with patch("landmarks.mosaic._sample_layers", return_value=[(rgb, off_target, layer)]):
+            self.assertIsNone(mosaic.locate("jwst", 83.8, -5.4, 0.3, 0.03, 0.1))
+
+        on_target = np.zeros((192, 192), bool)
+        on_target[70:122, 70:122] = True  # covers the target core with high framed coverage
+        with patch("landmarks.mosaic._sample_layers", return_value=[(rgb, on_target, layer)]):
+            framed = mosaic.locate("jwst", 83.8, -5.4, 0.3, 0.03, 0.1)
+            self.assertIsNotNone(framed)
 
     def test_compose_adds_detail_without_frame_squares(self):
         rng = np.random.default_rng(1)
@@ -387,20 +433,20 @@ class DetailFieldTests(SimpleTestCase):
         self.assertEqual(services.detail_fov(alnilam), 1.0)      # mag 1.69
         self.assertEqual(services.detail_fov(faint), services.DETAIL_STAR_FOV)
 
+    @patch.object(services._UNSATURATED_MOSAIC_BG, "fetch_cutout")
     @patch("landmarks.services.get_sky_image")
-    def test_burnt_out_background_falls_back_to_another_survey(self, sky):
+    def test_burnt_out_background_falls_back_to_unsaturated_ir(self, sky, ir_cutout):
         white = ToneTests._encode(None, np.full((60, 60, 3), 235))
         ok = ToneTests._encode(None, np.random.default_rng(2).integers(0, 80, (60, 60, 3)))
 
-        def fake(ra, dec, fov, rot, key, w, h):
-            result = type("R", (), {})()
-            result.data = white if key == "dss2_color" else ok
-            result.provider = type("P", (), {"name": key.upper()})()
-            return result
+        result = type("R", (), {})()
+        result.data = white
+        result.provider = type("P", (), {"name": "DSS2 Color"})()
+        sky.return_value = result
+        ir_cutout.return_value = ok
 
-        sky.side_effect = fake
         data, name = services._background(83.8, -5.4, 0.2, "dss2_color")
-        self.assertEqual(name, "2MASS_COLOR")
+        self.assertEqual(name, "2MASS Color")
         self.assertIs(data, ok)
 
 

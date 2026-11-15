@@ -77,3 +77,76 @@ class GlassIconButton extends StatelessWidget {
     );
   }
 }
+
+/// Segmented two-icon pill that switches between the 3D Sky View (globe) and Camera modes.
+/// Keeping both icons visible with the active mode highlighted makes its purpose unmistakable
+/// without needing a text label that could clip on narrow screens.
+class ModeSwitchPill extends StatelessWidget {
+  const ModeSwitchPill({
+    super.key,
+    required this.isSkyView,
+    required this.tooltip,
+    required this.onPressed,
+    this.height = 34,
+  });
+
+  /// True when currently on Sky View (globe highlighted); false on Camera (camera highlighted).
+  final bool isSkyView;
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final segmentSize = height - 8;
+    final iconSize = (height * 0.45).clamp(14.0, 18.0);
+
+    Widget segment({required IconData icon, required bool active}) {
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        width: segmentSize,
+        height: segmentSize,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: active ? scheme.primary : Colors.transparent,
+        ),
+        child: Icon(
+          icon,
+          size: iconSize,
+          color: active ? scheme.onPrimary : Colors.white70,
+        ),
+      );
+    }
+
+    return Semantics(
+      button: true,
+      label: tooltip,
+      child: Tooltip(
+        message: tooltip,
+        child: Glass(
+          borderRadius: const BorderRadius.all(Radius.circular(999)),
+          opacity: 0.5,
+          child: InkWell(
+            borderRadius: const BorderRadius.all(Radius.circular(999)),
+            onTap: onPressed,
+            child: SizedBox(
+              height: height,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    segment(icon: Icons.public, active: isSkyView),
+                    const SizedBox(width: 2),
+                    segment(icon: Icons.camera_alt_outlined, active: !isSkyView),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

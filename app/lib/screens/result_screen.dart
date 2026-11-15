@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models.dart';
@@ -37,38 +38,78 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
   Widget build(BuildContext context) {
     final s = ref.watch(sessionProvider);
     final session = ref.read(sessionProvider.notifier);
+    final landmarkCount = s.landmarks?.landmarks.length ?? 0;
+    final hasLandmarks = s.skyImage != null && landmarkCount > 0;
+
+    final shortLandscape = MediaQuery.sizeOf(context).height < 460;
+
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) session.reset();
       },
-      child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: Colors.black,
-          title: const Text('Your sky'),
-          actions: [
-            if (s.skyImage != null && (s.landmarks?.landmarks.isNotEmpty ?? false))
-              IconButton(
-                tooltip: _showMarkers ? 'Hide landmarks' : 'Show landmarks',
-                icon: Icon(_showMarkers ? Icons.location_on : Icons.location_off_outlined),
-                onPressed: () => setState(() => _showMarkers = !_showMarkers),
-              ),
-            if (s.solve != null)
-              IconButton(
-                tooltip: 'Details',
-                icon: const Icon(Icons.info_outline),
-                onPressed: () => _showDetails(s),
-              ),
-            if (s.solve != null)
-              IconButton(
-                tooltip: 'Image source',
-                icon: const Icon(Icons.layers_outlined),
-                onPressed: s.busy
-                    ? null
-                    : () => showProviderPicker(context, ref, onSelected: session.changeProvider),
-              ),
-          ],
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.light,
+        child: Scaffold(
+          backgroundColor: const Color(0xFF05070D),
+          appBar: AppBar(
+            toolbarHeight: shortLandscape ? 46 : kToolbarHeight,
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            scrolledUnderElevation: 0,
+            titleSpacing: 4,
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Your sky',
+                  style: TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0.2),
+                ),
+                if (hasLandmarks && !s.busy)
+                  Text(
+                    '$landmarkCount ${landmarkCount == 1 ? 'object' : 'objects'} in field',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Colors.white60,
+                        ),
+                  ),
+              ],
+            ),
+            actions: [
+              if (hasLandmarks)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: _HeaderActionButton(
+                    tooltip: _showMarkers ? 'Hide landmarks' : 'Show landmarks',
+                    icon: _showMarkers ? Icons.location_on : Icons.location_off_outlined,
+                    selected: _showMarkers,
+                    onPressed: () => setState(() => _showMarkers = !_showMarkers),
+                  ),
+                ),
+              if (s.solve != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: _HeaderActionButton(
+                    tooltip: 'Details',
+                    icon: Icons.info_outline,
+                    onPressed: () => _showDetails(s),
+                  ),
+                ),
+              if (s.solve != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: _HeaderActionButton(
+                    tooltip: 'Image source',
+                    icon: Icons.layers_outlined,
+                    onPressed: s.busy
+                        ? null
+                        : () =>
+                            showProviderPicker(context, ref, onSelected: session.changeProvider),
+                  ),
+                ),
+            ],
+          ),
+          body: SafeArea(top: false, child: _body(s, session)),
         ),
-        body: SafeArea(child: _body(s, session)),
       ),
     );
   }
@@ -112,51 +153,70 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
           onTap: session.retry,
         ),
       Expanded(
-        child: Stack(fit: StackFit.expand, children: [
-          if (s.skyImage != null)
-            // Each newly fetched survey image ripples in with a burst of shifting colours.
-            MagicReveal(
-              trigger: s.skyImage,
-              child: CompareView(
-                key: _compareKey,
-                original: original,
-                replacement: MemoryImage(s.skyImage!.bytes),
-                aspectRatio: aspect,
-                initialSplit: _split,
-                overlayBuilder: _showMarkers && s.landmarks != null && !s.busy
-                    ? (scale) => LandmarkOverlay(
-                          landmarks: s.landmarks!.landmarks,
-                          scale: scale,
-                          onTap: (lm) => _openLandmark(lm, s.skyImage!.providerKey),
-                        )
-                    : null,
-              ),
-            )
-          else
-            Center(
-              child: AspectRatio(
-                  aspectRatio: aspect, child: Image(image: original, fit: BoxFit.fill)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.11)),
+              boxShadow: const [
+                BoxShadow(color: Colors.black87, blurRadius: 20, offset: Offset(0, 8)),
+              ],
             ),
-          if (s.busy)
-            ColoredBox(
-              color: Colors.black54,
-              child: ProgressMessage(
-                text: switch (s.stage) {
-                  Stage.solving => 'Finding your stars…\nThis can take up to a minute.',
-                  Stage.fetchingImage => 'Fetching the survey image…',
-                  _ => 'Preparing photo…',
-                },
-                onCancel: s.stage == Stage.fetchingImage ? session.cancelImage : null,
-              ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(19),
+              child: Stack(fit: StackFit.expand, children: [
+                if (s.skyImage != null)
+                  // Each newly fetched survey image ripples in with a burst of shifting colours.
+                  MagicReveal(
+                    trigger: s.skyImage,
+                    child: CompareView(
+                      key: _compareKey,
+                      original: original,
+                      replacement: MemoryImage(s.skyImage!.bytes),
+                      aspectRatio: aspect,
+                      initialSplit: _split,
+                      onSplitChanged: (v) => setState(() => _split = v),
+                      overlayBuilder: _showMarkers && s.landmarks != null && !s.busy
+                          ? (scale) => LandmarkOverlay(
+                                landmarks: s.landmarks!.landmarks,
+                                scale: scale,
+                                onTap: (lm) => _openLandmark(lm, s.skyImage!.providerKey),
+                              )
+                          : null,
+                    ),
+                  )
+                else
+                  Center(
+                    child: AspectRatio(
+                      aspectRatio: aspect,
+                      child: Image(image: original, fit: BoxFit.fill),
+                    ),
+                  ),
+                if (s.busy)
+                  ColoredBox(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    child: ProgressMessage(
+                      text: switch (s.stage) {
+                        Stage.solving => 'Finding your stars…\nThis can take up to a minute.',
+                        Stage.fetchingImage => 'Fetching the survey image…',
+                        _ => 'Preparing photo…',
+                      },
+                      onCancel: s.stage == Stage.fetchingImage ? session.cancelImage : null,
+                    ),
+                  ),
+                if (chips.isNotEmpty && !s.busy)
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    right: 10,
+                    child: Wrap(spacing: 6, runSpacing: 6, children: chips),
+                  ),
+              ]),
             ),
-          if (chips.isNotEmpty && !s.busy)
-            Positioned(
-              top: 8,
-              left: 8,
-              right: 8,
-              child: Wrap(spacing: 6, runSpacing: 6, children: chips),
-            ),
-        ]),
+          ),
+        ),
       ),
       if (s.skyImage != null) _compareSlider(),
     ]);
@@ -167,37 +227,190 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF10131C),
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text('Details', style: Theme.of(context).textTheme.titleMedium),
-            ),
-            InfoBar(solve: s.solve!, image: s.skyImage),
-          ],
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
+                child: Row(
+                  children: [
+                    const Icon(Icons.auto_awesome_outlined, size: 20, color: Colors.white70),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Details',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              InfoBar(solve: s.solve!, image: s.skyImage),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _compareSlider() {
+    final scheme = Theme.of(context).colorScheme;
+    final surveyActive = _split <= 0.08;
+    final photoActive = _split >= 0.92;
+    final compact = MediaQuery.sizeOf(context).height < 460;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(children: [
-        TextButton(onPressed: () => _setSplit(0), child: const Text('Survey')),
-        Expanded(
-          child: Slider(
-            key: const Key('compare-slider'),
-            value: _split,
-            onChanged: _setSplit,
-            semanticFormatterCallback: (v) => '${(v * 100).round()}% original photo',
+      padding: compact
+          ? const EdgeInsets.fromLTRB(10, 2, 10, 6)
+          : const EdgeInsets.fromLTRB(10, 4, 10, 10),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: const Color(0xFF0E1320),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            ),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 6, vertical: compact ? 2 : 4),
+              child: Row(children: [
+                _CompareEndpointButton(
+                  icon: Icons.auto_awesome_outlined,
+                  label: 'Survey',
+                  active: surveyActive,
+                  onPressed: () => _setSplit(0),
+                ),
+                Expanded(
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 4,
+                      activeTrackColor: scheme.primary,
+                      inactiveTrackColor: Colors.white.withValues(alpha: 0.16),
+                      thumbColor: Colors.white,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                    ),
+                    child: Slider(
+                      key: const Key('compare-slider'),
+                      value: _split,
+                      onChanged: _setSplit,
+                      semanticFormatterCallback: (v) => '${(v * 100).round()}% original photo',
+                    ),
+                  ),
+                ),
+                _CompareEndpointButton(
+                  icon: Icons.photo_camera_outlined,
+                  label: 'My photo',
+                  active: photoActive,
+                  onPressed: () => _setSplit(1),
+                ),
+              ]),
+            ),
           ),
         ),
-        TextButton(onPressed: () => _setSplit(1), child: const Text('My photo')),
-      ]),
+      ),
+    );
+  }
+}
+
+class _HeaderActionButton extends StatelessWidget {
+  const _HeaderActionButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+    this.selected = false,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final bg = selected
+        ? scheme.primary.withValues(alpha: 0.22)
+        : Colors.white.withValues(alpha: 0.07);
+    final border = selected
+        ? scheme.primary.withValues(alpha: 0.55)
+        : Colors.white.withValues(alpha: 0.12);
+    final fg = onPressed == null
+        ? Colors.white30
+        : (selected ? scheme.primary : Colors.white);
+
+    return Semantics(
+      button: true,
+      label: tooltip,
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: bg,
+          shape: CircleBorder(side: BorderSide(color: border)),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onPressed,
+            child: SizedBox.square(
+              dimension: 38,
+              child: Icon(icon, size: 19, color: fg),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CompareEndpointButton extends StatelessWidget {
+  const _CompareEndpointButton({
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: active ? scheme.primary.withValues(alpha: 0.22) : Colors.transparent,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onPressed,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 15,
+                color: active ? scheme.primary : Colors.white60,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: active ? Colors.white : Colors.white70,
+                      fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

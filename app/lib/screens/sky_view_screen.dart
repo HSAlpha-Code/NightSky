@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -17,6 +18,7 @@ import '../sky_view/sky_sheets.dart';
 import '../sky_view/sky_sphere_painter.dart';
 import '../sky_view/time_machine_bar.dart';
 import '../widgets/camera_hints.dart';
+import '../widgets/glass.dart';
 import 'camera_screen.dart';
 import 'settings_screen.dart';
 
@@ -30,14 +32,20 @@ class SkyViewScreen extends ConsumerStatefulWidget {
     this.initialManualMode = false,
     this.initialAltDeg = 35.0,
     this.initialAzDeg = 180.0,
+    this.initialRollDeg = 0.0,
     this.initialUtc,
+    this.orientationTracker,
   });
 
   final bool openedFromCamera;
   final bool initialManualMode;
   final double initialAltDeg;
   final double initialAzDeg;
+  final double initialRollDeg;
   final DateTime? initialUtc;
+
+  /// Optional tracker injected by tests to simulate live compass/gyro streams cleanly.
+  final OrientationTracker? orientationTracker;
 
   @override
   ConsumerState<SkyViewScreen> createState() => _SkyViewScreenState();
@@ -48,7 +56,7 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
   /// Timelapse speed when "Timelapse" play is active (300x = 5 minutes of sky per second).
   static const double _timelapseRate = 300.0;
 
-  final _orientation = OrientationTracker();
+  late final OrientationTracker _orientation = widget.orientationTracker ?? OrientationTracker();
   final _location = LocationService();
   late final Ticker _ticker;
 
@@ -56,6 +64,8 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
   late bool _manualMode = widget.initialManualMode;
   late double _manualAltDeg = widget.initialAltDeg;
   late double _manualAzDeg = widget.initialAzDeg;
+  late double _manualRollDeg = widget.initialRollDeg;
+  Orientation? _lastUiOrientation;
   double _fovDeg = 60.0;
   double _pinchBaseFov = 60.0;
   Offset? _lastFocalPoint;
@@ -94,7 +104,11 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
       _gpsLonDeg = s.manualLongitude!;
     }
     if (!_manualMode) {
-      _startSensors(s);
+      if (widget.orientationTracker != null && _orientation.hasData) {
+        _displayQuaternion = _orientation.engine.current;
+      } else {
+        _startSensors(s);
+      }
     }
     _querySensors();
     _initLocation();
@@ -102,15 +116,30 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final uiOrientation = MediaQuery.orientationOf(context);
+    if (_lastUiOrientation != null && _lastUiOrientation != uiOrientation) {
+      // When the Flutter window itself rotates between portrait and landscape, align manual
+      // mode with the newly rotated window's top edge so the horizon stays upright.
+      _manualRollDeg = 0.0;
+    }
+    _lastUiOrientation = uiOrientation;
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _ticker.dispose();
-    _orientation.stop();
+    if (widget.orientationTracker == null) {
+      _orientation.stop();
+    }
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (widget.orientationTracker != null) return;
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       _orientation.stop();
     } else if (state == AppLifecycleState.resumed && !_manualMode) {
@@ -119,6 +148,18 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
   }
 
   Future<void> _querySensors() async {
+    if (widget.orientationTracker != null) {
+      if (!mounted) return;
+      setState(() {
+        _sensors = const SensorAvailability(
+          accelerometer: true,
+          magnetometer: true,
+          gyroscope: true,
+          rotationVector: true,
+        );
+      });
+      return;
+    }
     final avail = await SensorAvailability.query();
     if (!mounted) return;
     final useGyro = ref.read(settingsProvider).useGyroscope;
@@ -260,8 +301,26 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
     return snap;
   }
 
-  SkyCamera _buildCamera(double lat, double lon, DateTime utc, double declDeg) {
-    final q = _displayQuaternion;
+  double _effectiveScreenRotationDeg(Orientation uiOrientation, List<double> q) {
+    final reported = _orientation.displayRotationDeg;
+    if (uiOrientation == Orientation.landscape) {
+      if (reported == 90 || reported == 270) return reported!.toDouble();
+      final r = quaternionToMatrix(q);
+      return r[6] >= 0 ? 90.0 : 270.0;
+    }
+    if (reported == 180) return 180.0;
+    return 0.0;
+  }
+
+  SkyCamera _buildCamera(
+    double lat,
+    double lon,
+    DateTime utc,
+    double declDeg,
+    Orientation uiOrientation,
+  ) {
+    final q = _displayQuaternion ??
+        (widget.orientationTracker != null ? _orientation.engine.current : null);
     if (!_manualMode && q != null) {
       return SkyCamera.fromSensorQuaternion(
         quaternion: q,
@@ -270,6 +329,7 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
         longitudeDeg: lon,
         when: utc,
         fovDeg: _fovDeg,
+        screenRotationDeg: _effectiveScreenRotationDeg(uiOrientation, q),
       );
     }
     return SkyCamera.fromAltAz(
@@ -279,14 +339,16 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
       longitudeDeg: lon,
       when: utc,
       fovDeg: _fovDeg,
+      rollDeg: _manualRollDeg,
     );
   }
 
   void _enterManualFromCurrent(SkyCamera cam) {
     if (_manualMode) return;
     final p = cam.centerAltAz;
-    _manualAltDeg = p.altitudeDeg;
+    _manualAltDeg = p.altitudeDeg.clamp(-89.5, 89.5);
     _manualAzDeg = p.azimuthDeg;
+    _manualRollDeg = snapRollToQuadrantDeg(cam.screenRollDeg);
     _manualMode = true;
   }
 
@@ -297,11 +359,16 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
         _sensors!.supports(mode) ||
         _sensors!.supports(SensorMode.compass);
     if (!supported) {
-      _showCalibrationSheet(0.0);
+      _showCalibrationSheet(0.0, null);
       return;
     }
-    setState(() => _manualMode = false);
-    _startSensors(s);
+    setState(() {
+      _manualMode = false;
+      _manualRollDeg = 0.0;
+    });
+    if (widget.orientationTracker == null) {
+      _startSensors(s);
+    }
   }
 
   void _centerOnObject(SkyObject obj, double lat, double lon, DateTime utc) {
@@ -413,7 +480,7 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
     );
   }
 
-  void _showCalibrationSheet(double declDeg) {
+  void _showCalibrationSheet(double declDeg, SkyCamera? currentCamera) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -424,7 +491,13 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
         rotationAccuracy: _orientation.rotationAccuracy,
         manualMode: _manualMode,
         declinationDeg: declDeg,
-        onSwitchManual: () => setState(() => _manualMode = true),
+        onSwitchManual: () => setState(() {
+          if (currentCamera != null) {
+            _enterManualFromCurrent(currentCamera);
+          } else {
+            _manualMode = true;
+          }
+        }),
         onResumeSensors: _resumeLiveSensors,
       ),
     );
@@ -443,7 +516,8 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
   Widget build(BuildContext context) {
     ref.listen<AppSettings>(settingsProvider, (prev, next) {
       if ((prev?.useGyroscope != next.useGyroscope || prev?.smoothing != next.smoothing) &&
-          !_manualMode) {
+          !_manualMode &&
+          widget.orientationTracker == null) {
         _startSensors(next);
       }
     });
@@ -455,12 +529,13 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
     final catalog = ref.watch(skyCatalogProvider).value;
     final curatedIndex = ref.watch(curatedIndexProvider);
     final curatedIds = curatedIndex?.counts.keys.toSet() ?? const <String>{};
+    final uiOrientation = MediaQuery.orientationOf(context);
 
     final (lat, lon) = _observerLatLon(settings);
     final skyUtc = _effectiveUtc();
     final declDeg = magneticDeclinationDeg(latitudeDeg: lat, longitudeDeg: lon, when: skyUtc);
     final solar = _solarSystemFor(skyUtc, lat, lon);
-    final camera = _buildCamera(lat, lon, skyUtc, declDeg);
+    final camera = _buildCamera(lat, lon, skyUtc, declDeg, uiOrientation);
     final center = camera.centerAltAz;
 
     final sceneRenderer = SkySceneRenderer(
@@ -485,9 +560,71 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
               constraints.maxWidth > 0 ? constraints.maxWidth : 360.0,
               constraints.maxHeight > 0 ? constraints.maxHeight : 640.0,
             );
+            final isLandscape = viewSize.width > viewSize.height;
             final guideInfo = _guideTarget == null
                 ? null
                 : camera.guideTowards(_guideTarget!.icrs, viewSize);
+
+            final manualChip = _manualMode
+                ? ActionChip(
+                    key: const Key('resume-live-compass'),
+                    visualDensity: isLandscape ? VisualDensity.compact : null,
+                    backgroundColor: Colors.black.withValues(alpha: 0.7),
+                    avatar: const Icon(Icons.explore, size: 17),
+                    label: Text(
+                      _sensors != null &&
+                              !_sensors!.supports(SensorMode.compass) &&
+                              !_sensors!.supports(SensorMode.gyro)
+                          ? 'Manual drag (no compass sensor)'
+                          : 'Manual drag · Tap for live compass',
+                    ),
+                    onPressed: _resumeLiveSensors,
+                  )
+                : null;
+
+            final timeBar = TimeMachineBar(
+              effectiveUtc: skyUtc,
+              isLive: _isLiveTime,
+              playing: _timelapsePlaying,
+              expanded: _timeExpanded,
+              sliderHours: _sliderHours,
+              onToggleExpanded: () => setState(() => _timeExpanded = !_timeExpanded),
+              onSliderChanged: (h) => setState(() {
+                _anchorUtc ??= DateTime.now().toUtc();
+                _sliderHours = h;
+              }),
+              onStep: (delta) => setState(() {
+                final cur = _effectiveUtc();
+                _anchorUtc = cur.add(delta);
+                _sliderHours = 0.0;
+              }),
+              onTogglePlay: () => setState(() {
+                _anchorUtc = _effectiveUtc();
+                _sliderHours = 0.0;
+                _timelapsePlaying = !_timelapsePlaying;
+              }),
+              onResetNow: () => setState(() {
+                _anchorUtc = null;
+                _sliderHours = 0.0;
+                _timelapsePlaying = false;
+              }),
+              onPickDateTime: _pickDateTime,
+            );
+
+            final pointingPill = settings.showPointingReadout
+                ? PointingReadout(
+                    altitudeDeg: center.altitudeDeg,
+                    azimuthDeg: center.azimuthDeg,
+                    usingGyroscope: _orientation.mode == SensorMode.gyro,
+                  )
+                : null;
+
+            final creditLine = Text(
+              '${spotlit != null ? '${spotlit.name} · ' : ''}'
+              'FOV ${camera.horizontalFovDeg(viewSize).round()}° · Milky Way © Axel Mellinger',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54),
+              textAlign: TextAlign.center,
+            );
 
             return GestureDetector(
               key: const Key('sky-view-canvas'),
@@ -503,6 +640,9 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
               onScaleStart: (details) {
                 _pinchBaseFov = _fovDeg;
                 _lastFocalPoint = details.localFocalPoint;
+                if (details.pointerCount == 1 && !_manualMode) {
+                  setState(() => _enterManualFromCurrent(camera));
+                }
               },
               onScaleUpdate: (details) {
                 setState(() {
@@ -512,10 +652,16 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
                     final delta = details.localFocalPoint - _lastFocalPoint!;
                     if (delta.distance > 0.5) {
                       _enterManualFromCurrent(camera);
-                      final degPerPx = _fovDeg / viewSize.width;
-                      _manualAzDeg = (_manualAzDeg - delta.dx * degPerPx) % 360.0;
+                      final refSide = viewSize.shortestSide > 0 ? viewSize.shortestSide : 360.0;
+                      final degPerPx = _fovDeg / refSide;
+                      final rollRad = _manualRollDeg * degToRad;
+                      final cr = math.cos(rollRad);
+                      final sr = math.sin(rollRad);
+                      final dRight = delta.dx * cr + delta.dy * sr;
+                      final dDown = -delta.dx * sr + delta.dy * cr;
+                      _manualAzDeg = (_manualAzDeg - dRight * degPerPx) % 360.0;
                       if (_manualAzDeg < 0) _manualAzDeg += 360.0;
-                      _manualAltDeg = (_manualAltDeg + delta.dy * degPerPx).clamp(-89.5, 89.5);
+                      _manualAltDeg = (_manualAltDeg + dDown * degPerPx).clamp(-89.5, 89.5);
                     }
                   }
                   _lastFocalPoint = details.localFocalPoint;
@@ -534,76 +680,81 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
                         sunAltitudeDeg: solar.sunAltitudeDeg,
                         showMilkyWay: layers.milkyWay,
                         showHorizon: layers.horizon,
+                        horizonShading: settings.horizonShading,
                         nightVision: settings.nightVision,
                         overlayPaint: sceneRenderer.paint,
                       ),
                     ),
                   ),
 
-                  // Top toolbar: Search/Find, Layers, Camera switch, Sensor calibration, Settings.
+                  // Top toolbar: Search/Find, Location, Layers, Calibration, Mode switch, Settings.
                   Positioned(
                     top: 6,
-                    left: 8,
+                    left: 6,
                     right: 6,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Row(
                           children: [
-                            IconButton(
-                              key: const Key('sky-find-button'),
-                              tooltip: 'Find object',
-                              icon: const Icon(Icons.search),
-                              onPressed: () => _openSearchSheet(
-                                catalog,
-                                solar,
-                                curatedIds,
-                                lat,
-                                lon,
-                                skyUtc,
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  _SkyHudIconButton(
+                                    key: const Key('sky-find-button'),
+                                    tooltip: 'Find object',
+                                    icon: Icons.search,
+                                    onPressed: () => _openSearchSheet(
+                                      catalog,
+                                      solar,
+                                      curatedIds,
+                                      lat,
+                                      lon,
+                                      skyUtc,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: _SkyLocationPill(
+                                      key: const Key('sky-location-pill'),
+                                      icon: settings.useManualLocation
+                                          ? Icons.edit_location_alt_outlined
+                                          : Icons.location_on_outlined,
+                                      label: _locationBadgeLabel(settings, lat, lon),
+                                      onPressed: () => _openLocationSheet(lat, lon),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            ActionChip(
-                              key: const Key('sky-location-pill'),
-                              visualDensity: VisualDensity.compact,
-                              backgroundColor: Colors.black.withValues(alpha: 0.6),
-                              avatar: Icon(
-                                settings.useManualLocation
-                                    ? Icons.edit_location_alt_outlined
-                                    : Icons.location_on_outlined,
-                                size: 15,
-                              ),
-                              label: Text(
-                                _locationBadgeLabel(settings, lat, lon),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              onPressed: () => _openLocationSheet(lat, lon),
-                            ),
-                            const Spacer(),
-                            IconButton(
+                            const SizedBox(width: 4),
+                            _SkyHudIconButton(
                               key: const Key('sky-layers-button'),
                               tooltip: 'Sky Layers & Display',
-                              icon: const Icon(Icons.tune),
+                              icon: Icons.tune,
                               onPressed: _openLayersSheet,
                             ),
-                            IconButton(
+                            const SizedBox(width: 3),
+                            _SkyHudIconButton(
                               key: const Key('sky-calibrate-button'),
                               tooltip: 'Sensors & calibration',
-                              icon: Icon(
-                                _manualMode ? Icons.touch_app_outlined : Icons.explore_outlined,
-                                color: _orientation.needsCalibration ? Colors.amber : null,
-                              ),
-                              onPressed: () => _showCalibrationSheet(declDeg),
+                              icon: _manualMode
+                                  ? Icons.touch_app_outlined
+                                  : Icons.explore_outlined,
+                              iconColor: _orientation.needsCalibration ? Colors.amber : Colors.white,
+                              onPressed: () => _showCalibrationSheet(declDeg, camera),
                             ),
-                            TextButton.icon(
+                            const SizedBox(width: 4),
+                            ModeSwitchPill(
                               key: const Key('switch-to-camera'),
+                              isSkyView: true,
+                              tooltip: 'Switch to Camera mode',
                               onPressed: _openCameraMode,
-                              icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                              label: const Text('Camera'),
                             ),
-                            IconButton(
+                            const SizedBox(width: 3),
+                            _SkyHudIconButton(
                               tooltip: 'Settings',
-                              icon: const Icon(Icons.settings_outlined),
+                              icon: Icons.settings_outlined,
                               onPressed: () => Navigator.of(context).push(
                                 MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
                               ),
@@ -615,13 +766,16 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
                         if (_guideTarget != null && guideInfo != null)
                           Padding(
                             padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-                            child: _GuideBanner(
-                              target: _guideTarget!,
-                              angleDeg: guideInfo.angleDeg,
-                              manualMode: _manualMode,
-                              onCenter: () => _centerOnObject(_guideTarget!, lat, lon, skyUtc),
-                              onDetails: () => _openObjectSheet(_guideTarget!, lat, lon, skyUtc),
-                              onClear: () => setState(() => _guideTarget = null),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 520),
+                              child: _GuideBanner(
+                                target: _guideTarget!,
+                                angleDeg: guideInfo.angleDeg,
+                                manualMode: _manualMode,
+                                onCenter: () => _centerOnObject(_guideTarget!, lat, lon, skyUtc),
+                                onDetails: () => _openObjectSheet(_guideTarget!, lat, lon, skyUtc),
+                                onClear: () => setState(() => _guideTarget = null),
+                              ),
                             ),
                           )
                         else if (!_manualMode && _orientation.needsCalibration)
@@ -633,7 +787,7 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
                               avatar: const Icon(Icons.warning_amber_rounded,
                                   size: 17, color: Colors.amber),
                               label: const Text('Compass accuracy low · Tap to calibrate'),
-                              onPressed: () => _showCalibrationSheet(declDeg),
+                              onPressed: () => _showCalibrationSheet(declDeg, camera),
                             ),
                           ),
                       ],
@@ -644,74 +798,57 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
                   Positioned(
                     left: 12,
                     right: 12,
-                    bottom: 8,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (_manualMode)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: ActionChip(
-                              key: const Key('resume-live-compass'),
-                              backgroundColor: Colors.black.withValues(alpha: 0.7),
-                              avatar: const Icon(Icons.explore, size: 17),
-                              label: Text(
-                                _sensors != null &&
-                                        !_sensors!.supports(SensorMode.compass) &&
-                                        !_sensors!.supports(SensorMode.gyro)
-                                    ? 'Manual drag (no compass sensor)'
-                                    : 'Manual drag · Tap for live compass',
-                              ),
-                              onPressed: _resumeLiveSensors,
-                            ),
+                    bottom: isLandscape ? 4 : 8,
+                    child: isLandscape
+                        ? Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_timeExpanded) ...[
+                                timeBar,
+                                if (manualChip != null || pointingPill != null) ...[
+                                  const SizedBox(height: 4),
+                                  Wrap(
+                                    alignment: WrapAlignment.center,
+                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                    spacing: 8,
+                                    runSpacing: 4,
+                                    children: [
+                                      if (manualChip != null) manualChip,
+                                      if (pointingPill != null) pointingPill,
+                                    ],
+                                  ),
+                                ],
+                              ] else
+                                Wrap(
+                                  alignment: WrapAlignment.center,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  spacing: 8,
+                                  runSpacing: 4,
+                                  children: [
+                                    if (manualChip != null) manualChip,
+                                    timeBar,
+                                    if (pointingPill != null) pointingPill,
+                                  ],
+                                ),
+                              const SizedBox(height: 2),
+                              creditLine,
+                            ],
+                          )
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (manualChip != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 6),
+                                  child: manualChip,
+                                ),
+                              timeBar,
+                              const SizedBox(height: 6),
+                              if (pointingPill != null) pointingPill,
+                              const SizedBox(height: 3),
+                              creditLine,
+                            ],
                           ),
-                        TimeMachineBar(
-                          effectiveUtc: skyUtc,
-                          isLive: _isLiveTime,
-                          playing: _timelapsePlaying,
-                          expanded: _timeExpanded,
-                          sliderHours: _sliderHours,
-                          onToggleExpanded: () => setState(() => _timeExpanded = !_timeExpanded),
-                          onSliderChanged: (h) => setState(() {
-                            _anchorUtc ??= DateTime.now().toUtc();
-                            _sliderHours = h;
-                          }),
-                          onStep: (delta) => setState(() {
-                            final cur = _effectiveUtc();
-                            _anchorUtc = cur.add(delta);
-                            _sliderHours = 0.0;
-                          }),
-                          onTogglePlay: () => setState(() {
-                            _anchorUtc = _effectiveUtc();
-                            _sliderHours = 0.0;
-                            _timelapsePlaying = !_timelapsePlaying;
-                          }),
-                          onResetNow: () => setState(() {
-                            _anchorUtc = null;
-                            _sliderHours = 0.0;
-                            _timelapsePlaying = false;
-                          }),
-                          onPickDateTime: _pickDateTime,
-                        ),
-                        const SizedBox(height: 6),
-                        if (settings.showPointingReadout)
-                          PointingReadout(
-                            altitudeDeg: center.altitudeDeg,
-                            azimuthDeg: center.azimuthDeg,
-                            usingGyroscope: _orientation.mode == SensorMode.gyro,
-                          ),
-                        const SizedBox(height: 3),
-                        Text(
-                          '${spotlit != null ? '${spotlit.name} · ' : ''}'
-                          'FOV ${_fovDeg.round()}° · Milky Way © Axel Mellinger',
-                          style: Theme.of(context)
-                              .textTheme
-                              .labelSmall
-                              ?.copyWith(color: Colors.white54),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
                   ),
                 ],
               ),
@@ -786,6 +923,97 @@ class _GuideBanner extends StatelessWidget {
               onPressed: onClear,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SkyHudIconButton extends StatelessWidget {
+  const _SkyHudIconButton({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.iconColor = Colors.white,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+  final Color iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: tooltip,
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: Colors.black.withValues(alpha: 0.55),
+          shape: CircleBorder(
+            side: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
+          ),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onPressed,
+            child: SizedBox.square(
+              dimension: 34,
+              child: Icon(icon, size: 18, color: iconColor),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SkyLocationPill extends StatelessWidget {
+  const _SkyLocationPill({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.58),
+      shape: StadiumBorder(
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
+      ),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onPressed,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 34),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 14, color: Colors.white70),
+                const SizedBox(width: 5),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: Colors.white,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

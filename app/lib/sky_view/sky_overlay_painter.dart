@@ -202,7 +202,8 @@ class SkySceneRenderer {
   ) {
     final basePath = Path();
     final highlightPath = Path();
-    final margin = size.width * 0.4;
+    final maxSpan = math.max(size.width, size.height);
+    final margin = maxSpan * 0.4;
 
     for (final con in cat.constellations) {
       final isSpot = identical(con, spotlit);
@@ -216,7 +217,7 @@ class SkySceneRenderer {
               pt.dx <= size.width + margin &&
               pt.dy >= -margin &&
               pt.dy <= size.height + margin) {
-            if (prev != null && (pt - prev).distance < size.width * 0.75) {
+            if (prev != null && (pt - prev).distance < maxSpan * 0.75) {
               targetPath.moveTo(prev.dx, prev.dy);
               targetPath.lineTo(pt.dx, pt.dy);
             }
@@ -263,12 +264,16 @@ class SkySceneRenderer {
 
   void _paintStars(Canvas canvas, Size size, SkyCatalog cat, List<_LabelCandidate> labels) {
     final limitMag = effectiveLimitingMag;
-    final minCos = math.cos((camera.fovDeg * 0.85).clamp(20.0, 88.0) * degToRad);
     final fwd = camera.forwardIcrs;
     final right = camera.rightIcrs;
     final up = camera.upIcrs;
     final halfW = size.width * 0.5;
     final halfH = size.height * 0.5;
+    final refHalf = math.min(halfW, halfH);
+    final maxCornerTan = refHalf > 0
+        ? math.sqrt((halfW * halfW + halfH * halfH) / (refHalf * refHalf)) * camera.tanHalfFov
+        : camera.tanHalfFov;
+    final minCos = math.cos((math.atan(maxCornerTan) + 0.08).clamp(0.2, math.pi * 0.49));
     final invTan = 1.0 / camera.tanHalfFov;
     final allowGlow = quality != SkyQuality.powerSaver;
 
@@ -282,13 +287,12 @@ class SkySceneRenderer {
 
       final vx = cat.starIx[i], vy = cat.starIy[i], vz = cat.starIz[i];
       final z = vx * fwd.x + vy * fwd.y + vz * fwd.z;
-      if (z <= minCos && z <= 0.1) continue;
-      if (z <= 0.05) continue;
+      if (z <= minCos || z <= 0.05) continue;
 
       final scale = invTan / z;
-      final sx = halfW + halfW * (vx * right.x + vy * right.y + vz * right.z) * scale;
+      final sx = halfW + refHalf * (vx * right.x + vy * right.y + vz * right.z) * scale;
       if (sx < -12 || sx > size.width + 12) continue;
-      final sy = halfH - halfW * (vx * up.x + vy * up.y + vz * up.z) * scale;
+      final sy = halfH - refHalf * (vx * up.x + vy * up.y + vz * up.z) * scale;
       if (sy < -12 || sy > size.height + 12) continue;
 
       final pt = Offset(sx, sy);
@@ -553,8 +557,12 @@ class SkySceneRenderer {
 
       final topLeft = Offset(c.anchor.dx - tp.width * 0.5, c.anchor.dy + c.offsetY);
       final box = (topLeft & tp.size).inflate(4);
+      final bottomMargin = size.width > size.height ? 64.0 : 96.0;
       // Keep clear of top/bottom HUD strips and already-placed labels.
-      if (box.left < 6 || box.right > size.width - 6 || box.top < 54 || box.bottom > size.height - 96) {
+      if (box.left < 6 ||
+          box.right > size.width - 6 ||
+          box.top < 50 ||
+          box.bottom > size.height - bottomMargin) {
         continue;
       }
       if (occupied.any((r) => r.overlaps(box))) continue;
@@ -592,8 +600,8 @@ class SkySceneRenderer {
     }
 
     // Off-screen: clamp guide indicator onto a rounded perimeter margin and draw a chevron arrow.
-    final marginX = size.width * 0.5 - 36.0;
-    final marginY = size.height * 0.5 - 118.0;
+    final marginX = math.max(28.0, size.width * 0.5 - 36.0);
+    final marginY = math.max(28.0, size.height * 0.5 - (size.width > size.height ? 72.0 : 118.0));
     final dx = g.screenDir.dx, dy = g.screenDir.dy;
     final tx = dx.abs() < 1e-5 ? 1e9 : marginX / dx.abs();
     final ty = dy.abs() < 1e-5 ? 1e9 : marginY / dy.abs();

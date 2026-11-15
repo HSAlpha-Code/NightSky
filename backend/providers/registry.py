@@ -1,33 +1,37 @@
-"""Provider registry. Adding a provider = one adapter file + one line here."""
+"""Provider registry.
+
+Only distinct, reliable all-sky optical surveys are exposed:
+- DSS2 Color: sharp across both wide camera fields and star/object close-ups.
+- Mellinger Color: wide-angle Milky Way panorama for camera-field views (FOV >= 5 deg).
+"""
 from django.conf import settings
 
 from .base import ImageProvider
 from .hips2fits import Hips2FitsProvider
-from .panstarrs import PanStarrsProvider
 from .skyview import SkyViewProvider
 
 MIRROR = settings.HIPS_MIRROR_URL.rstrip("/")  # ESA ESASky copy of the CDS surveys ("" = off)
 
 PROVIDERS: list[ImageProvider] = [
-    Hips2FitsProvider("dss2_color", "CDS/P/DSS2/color", "DSS2 Color",
-                      "Digitized Sky Survey 2, colour composite of photographic plates.", "optical",
-                      mirror=MIRROR and f"{MIRROR}/DSSColor"),
-    Hips2FitsProvider("2mass_color", "CDS/P/2MASS/color", "2MASS Color",
-                      "Two Micron All Sky Survey, J/H/K colour composite.", "near-infrared",
-                      mirror=MIRROR and f"{MIRROR}/2MASSColor"),
-    Hips2FitsProvider("allwise_color", "CDS/P/allWISE/color", "AllWISE Color",
-                      "WISE mid-infrared colour composite (W1/W2/W4).", "mid-infrared",
-                      mirror=MIRROR and f"{MIRROR}/AllWISEColor", mirror_max_order=8),
-    Hips2FitsProvider("panstarrs_hips", "CDS/P/PanSTARRS/DR1/color-z-zg-g", "Pan-STARRS DR1 (HiPS)",
-                      "Pan-STARRS DR1 colour composite via hips2fits.", "optical",
-                      coverage="dec > -30, fov <= 30 deg", min_dec=-30.0, max_fov_deg=30.0),
-    SkyViewProvider("skyview_mellinger", ["Mellinger Red", "Mellinger Green", "Mellinger Blue"],
-                    "Mellinger Color (SkyView)",
-                    "Axel Mellinger's all-sky colour mosaic. Best for wide phone-camera fields.",
-                    "optical", scaling="Linear"),
-    SkyViewProvider("skyview_dss2_red", ["DSS2 Red"], "DSS2 Red (SkyView)",
-                    "Digitized Sky Survey 2 red plates via NASA SkyView. Best below ~10°.", "optical"),
-    PanStarrsProvider(),
+    Hips2FitsProvider(
+        "dss2_color",
+        "CDS/P/DSS2/color",
+        "DSS2 Color",
+        "Digitized Sky Survey 2 colour composite. Sharp for both wide fields and star close-ups.",
+        "optical",
+        mirror=MIRROR and f"{MIRROR}/DSSColor",
+    ),
+    SkyViewProvider(
+        "skyview_mellinger",
+        ["Mellinger Red", "Mellinger Green", "Mellinger Blue"],
+        "Mellinger Color",
+        "Axel Mellinger's all-sky Milky Way mosaic. Best for wide phone-camera sky fields.",
+        "optical",
+        scaling="Linear",
+        coverage="all-sky (wide fields >= 5°)",
+        min_fov_deg=5.0,
+        supports_detail=False,
+    ),
 ]
 
 _BY_KEY = {p.key: p for p in PROVIDERS}
@@ -41,11 +45,14 @@ def all_providers() -> list[ImageProvider]:
     return list(PROVIDERS)
 
 
+def detail_providers() -> list[ImageProvider]:
+    return [p for p in PROVIDERS if p.supports_detail]
+
+
 def fallback_candidates(ra: float, dec: float, fov_deg: float | None = None,
                         exclude: ImageProvider | None = None,
                         service_failed: bool = False) -> list[ImageProvider]:
-    """All-sky providers that cover the position, default first. If the excluded provider's
-    service failed, providers on other upstream services are tried before its siblings."""
+    """All-sky providers that cover the position and field size, default first."""
     default = get_provider(None)
     ordered = ([default] if default else []) + [p for p in PROVIDERS if p is not default]
     candidates = [p for p in ordered

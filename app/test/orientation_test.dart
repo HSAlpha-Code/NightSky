@@ -164,4 +164,15 @@ void main() {
         accelerometer: true, magnetometer: true, gyroscope: true, rotationVector: true);
     expect(all.supports(SensorMode.gyro), isTrue);
   });
+
+  test('OrientationTracker records display rotation from stream events', () {
+    final tracker = OrientationTracker(mode: SensorMode.gyro, alpha: 1.0);
+    expect(tracker.displayRotationDeg, isNull);
+    tracker.handleEventForTest([4, 90, 0, 0, double.nan, -1, 0, 90]);
+    expect(tracker.displayRotationDeg, 90);
+    tracker.handleEventForTest([2, 0, 0, 0, 1, 3, 1000000, 270]);
+    expect(tracker.displayRotationDeg, 270);
+    tracker.stop();
+    expect(tracker.displayRotationDeg, isNull);
+  });
 }

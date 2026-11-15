@@ -123,6 +123,7 @@ class ApiClient {
           credit: (j['credit'] ?? '') as String,
           caption: (j['caption'] ?? '') as String,
           fovDeg: (j['fov'] as num?)?.toDouble(),
+          availableViews: (j['available_views'] as List?)?.map((e) => e as String).toList(),
         );
       });
 

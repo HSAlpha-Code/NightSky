@@ -110,4 +110,27 @@ void main() {
     expect(bare.containsKey('latitude'), isFalse);
     expect(bare.containsKey('orientation'), isFalse);
   });
+
+  test('CaptureMetadata.forPhotoSize resolves landscape rotation and FOV', () {
+    // Landscape hold with +X pointing upwards (r[6] > 0) -> image_rotation_deg = 90.
+    final qLeft = axisAngle(0, 1, 0, -90); // maps +X_dev = (0,0,1) world Up
+    final base = CaptureMetadata(
+      timestampUtc: DateTime.utc(2026, 11, 12),
+      quaternion: qLeft,
+      fovDeg: 52.6,
+      landscapeFovDeg: 66.8,
+    );
+
+    final portraitMeta = base.forPhotoSize(1200, 1600).toJson();
+    expect(portraitMeta['image_rotation_deg'], 0);
+    expect(portraitMeta['fov_deg'], closeTo(52.6, 1e-6));
+
+    final landscapeMeta = base.forPhotoSize(1600, 1200).toJson();
+    expect(landscapeMeta['image_rotation_deg'], 90);
+    expect(landscapeMeta['fov_deg'], closeTo(66.8, 1e-6));
+
+    // Explicit displayRotationDeg = 270 takes precedence when shooting in landscape right.
+    final rightMeta = base.copyWith(displayRotationDeg: 270).forPhotoSize(1600, 1200).toJson();
+    expect(rightMeta['image_rotation_deg'], 270);
+  });
 }

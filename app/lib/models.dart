@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'sky_math.dart';
+
 /// Image provider metadata from `GET /api/providers`.
 class SkyProviderInfo {
   const SkyProviderInfo({
@@ -10,6 +12,7 @@ class SkyProviderInfo {
     required this.coverage,
     required this.allSky,
     required this.credit,
+    this.supportsDetail = true,
   });
 
   final String key;
@@ -20,6 +23,9 @@ class SkyProviderInfo {
   final bool allSky;
   final String credit;
 
+  /// Whether this survey has sufficient resolution for sub-degree star/object close-ups.
+  final bool supportsDetail;
+
   factory SkyProviderInfo.fromJson(Map<String, dynamic> j) => SkyProviderInfo(
         key: j['key'] as String,
         name: j['name'] as String,
@@ -28,6 +34,7 @@ class SkyProviderInfo {
         coverage: (j['coverage'] ?? '') as String,
         allSky: (j['all_sky'] ?? true) as bool,
         credit: (j['credit'] ?? '') as String,
+        supportsDetail: (j['supports_detail'] ?? true) as bool,
       );
 }
 
@@ -181,6 +188,7 @@ class LandmarkDetail {
     required this.credit,
     this.caption = '',
     this.fovDeg,
+    this.availableViews,
   });
 
   final Uint8List image;
@@ -188,6 +196,9 @@ class LandmarkDetail {
   final String credit;
   final String caption;
   final double? fovDeg;
+
+  /// Verified views available for this landmark (subset of "jwst", "hst", "survey").
+  final List<String>? availableViews;
 
   bool get fromSpaceTelescope => imageSource == 'jwst' || imageSource == 'hst';
 }
@@ -231,7 +242,10 @@ class CaptureMetadata {
     this.altitude,
     this.quaternion,
     this.reference = 'magnetic_north',
+    this.imageRotationDeg = 0,
     this.fovDeg,
+    this.landscapeFovDeg,
+    this.displayRotationDeg,
   });
 
   final DateTime timestampUtc;
@@ -242,17 +256,54 @@ class CaptureMetadata {
   /// Device -> world (East/North/Up) rotation, [x, y, z, w].
   final List<double>? quaternion;
   final String reference;
+
+  /// Which device axis points towards image-up (0 = +Y portrait, 90 = +X, 180 = -Y, 270 = -X).
+  final int imageRotationDeg;
+
+  /// Horizontal FOV of a portrait photo (or explicit FOV override).
   final double? fovDeg;
 
-  CaptureMetadata copyWith({double? fovDeg}) => CaptureMetadata(
+  /// Horizontal FOV of a landscape photo, if known from camera optics.
+  final double? landscapeFovDeg;
+
+  /// Display rotation in degrees (0, 90, 180, 270) at the moment of capture, if known.
+  final int? displayRotationDeg;
+
+  CaptureMetadata copyWith({
+    double? fovDeg,
+    double? landscapeFovDeg,
+    int? imageRotationDeg,
+    int? displayRotationDeg,
+  }) =>
+      CaptureMetadata(
         timestampUtc: timestampUtc,
         latitude: latitude,
         longitude: longitude,
         altitude: altitude,
         quaternion: quaternion,
         reference: reference,
+        imageRotationDeg: imageRotationDeg ?? this.imageRotationDeg,
         fovDeg: fovDeg ?? this.fovDeg,
+        landscapeFovDeg: landscapeFovDeg ?? this.landscapeFovDeg,
+        displayRotationDeg: displayRotationDeg ?? this.displayRotationDeg,
       );
+
+  /// Resolves [imageRotationDeg] and horizontal [fovDeg] against the actual upright photo
+  /// dimensions after EXIF orientation has been applied.
+  CaptureMetadata forPhotoSize(int width, int height) {
+    final landscape = width > height;
+    final resolvedRot = landscape
+        ? ((imageRotationDeg == 90 || imageRotationDeg == 270)
+            ? imageRotationDeg
+            : inferImageRotationDeg(
+                landscapePhoto: true,
+                quaternion: quaternion,
+                displayRotationDeg: displayRotationDeg,
+              ))
+        : ((imageRotationDeg == 0 || imageRotationDeg == 180) ? imageRotationDeg : 0);
+    final resolvedFov = landscape ? (landscapeFovDeg ?? fovDeg) : fovDeg;
+    return copyWith(imageRotationDeg: resolvedRot, fovDeg: resolvedFov);
+  }
 
   Map<String, dynamic> toJson() => {
         'timestamp': timestampUtc.toUtc().toIso8601String(),
@@ -271,9 +322,7 @@ class CaptureMetadata {
             },
             'reference': reference,
           },
-        // The app is locked to portrait and the capture orientation is locked too, so the
-        // top of the phone is always "up" in the photo.
-        'image_rotation_deg': 0,
+        'image_rotation_deg': imageRotationDeg,
         if (fovDeg != null) 'fov_deg': fovDeg,
       };
 }

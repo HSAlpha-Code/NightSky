@@ -26,5 +26,6 @@ class ProviderSerializer(serializers.Serializer):
     wavelength = serializers.CharField()
     coverage = serializers.CharField()
     all_sky = serializers.BooleanField()
+    supports_detail = serializers.BooleanField()
     service = serializers.CharField()
     credit = serializers.CharField()

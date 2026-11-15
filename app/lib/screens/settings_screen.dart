@@ -134,6 +134,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           onChanged: (v) => notifier.update((s) => s.copyWith(startInSkyView: v)),
         ),
         SwitchListTile(
+          key: const Key('setting-horizon-shading'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Horizon & ground shading'),
+          subtitle: const Text(
+            'Dims the sky below the horizon and adds twilight glow above it. '
+            'Turn off for uniform sky brightness.',
+          ),
+          value: s.horizonShading,
+          onChanged: (v) => notifier.update((s) => s.copyWith(horizonShading: v)),
+        ),
+        SwitchListTile(
           key: const Key('setting-night-vision'),
           contentPadding: EdgeInsets.zero,
           title: const Text('Red night-vision mode'),
@@ -143,6 +154,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
         const SizedBox(height: 8),
         const _SectionHeader('Display'),
+        _ChoiceSetting<ScreenOrientationMode>(
+          title: 'Screen orientation',
+          values: ScreenOrientationMode.values,
+          selected: s.orientationMode,
+          label: (v) => v.label,
+          description: s.orientationMode.description,
+          onSelected: (v) => notifier.update((s) => s.copyWith(orientationMode: v)),
+        ),
         _ChoiceSetting<FontSize>(
           title: 'Font size',
           values: FontSize.values,

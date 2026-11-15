@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,10 +9,50 @@ import '../models.dart';
 import '../state.dart';
 import '../widgets/curated_viewer.dart';
 
-/// Second-level view: one landmark seen from several points of view (Webb, Hubble, surveys),
-/// plus basic facts and credit.
+/// Session cache of already-fetched detail images so resolving an `'auto'` probe into its
+/// concrete view (`'jwst'`, `'hst'`, or `'survey'`) never re-downloads the image.
+class ResolvedDetailCacheNotifier extends Notifier<Map<(String, DetailView), LandmarkDetail>> {
+  @override
+  Map<(String, DetailView), LandmarkDetail> build() => const {};
+
+  void put(String landmarkId, DetailView view, LandmarkDetail detail) {
+    state = {...state, (landmarkId, view): detail};
+  }
+}
+
+final resolvedDetailCacheProvider =
+    NotifierProvider<ResolvedDetailCacheNotifier, Map<(String, DetailView), LandmarkDetail>>(
+        ResolvedDetailCacheNotifier.new);
+
+/// Verified available views per landmark id (subset of `'jwst'`, `'hst'`, `'survey'`).
+class LandmarkAvailabilityNotifier extends Notifier<Map<String, Set<String>>> {
+  @override
+  Map<String, Set<String>> build() => const {};
+
+  void record(String landmarkId, Set<String> views) {
+    state = {...state, landmarkId: Set.unmodifiable(views)};
+  }
+
+  void removeView(String landmarkId, String view) {
+    final current = state[landmarkId];
+    if (current == null || !current.contains(view)) return;
+    final updated = {...current}..remove(view);
+    if (updated.isEmpty) updated.add('survey');
+    state = {...state, landmarkId: Set.unmodifiable(updated)};
+  }
+}
+
+final landmarkAvailabilityProvider =
+    NotifierProvider<LandmarkAvailabilityNotifier, Map<String, Set<String>>>(
+        LandmarkAvailabilityNotifier.new);
+
+/// Second-level view: one landmark seen from verified available points of view (Webb, Hubble,
+/// detail-capable sky survey), plus basic facts and credit.
 final landmarkDetailProvider = FutureProvider.autoDispose
-    .family<LandmarkDetail, (String, DetailView)>((ref, args) {
+    .family<LandmarkDetail, (String, DetailView)>((ref, args) async {
+  final cached = ref.read(resolvedDetailCacheProvider)[args];
+  if (cached != null) return cached;
+
   final (id, view) = args;
   final cancel = CancelToken();
   ref.onDispose(cancel.cancel); // switching view or leaving stops the download
@@ -19,23 +61,74 @@ final landmarkDetailProvider = FutureProvider.autoDispose
       .landmarkDetail(id, providerKey: view.providerKey, view: view.view, cancelToken: cancel);
 });
 
-/// Views offered for a landmark: best, Webb, Hubble (not for stars), then every survey.
-List<DetailView> detailViews(Landmark lm, ProviderCatalog? catalog, String? surveyKey,
-        {bool hasCurated = false}) =>
-    [
-      // Only offered when the downloaded index says this body has curated highlights.
-      if (hasCurated) const DetailView('curated', null, curatedSourceLabel),
-      DetailView('auto', surveyKey, 'Best'),
-      if (!lm.isStar) ...[
-        DetailView('jwst', surveyKey, 'Webb'),
-        DetailView('hst', surveyKey, 'Hubble'),
-      ],
+/// Surveys with enough angular resolution for sub-degree star / DSO close-ups.
+List<SkyProviderInfo> detailSurveyProviders(ProviderCatalog? catalog) => [
       for (final p in catalog?.providers ?? const <SkyProviderInfo>[])
-        DetailView('survey', p.key, p.name),
+        if (p.supportsDetail) p,
     ];
 
-/// The view the user last picked, and the last real survey/mosaic view before it. Kept across
-/// landmarks so a body without curated highlights falls back to the previous source.
+/// Normalises a wide-field provider key (such as Mellinger) to a detail-capable survey.
+String effectiveDetailSurveyKey(ProviderCatalog? catalog, String? requestedKey) {
+  final surveys = detailSurveyProviders(catalog);
+  if (surveys.isEmpty) {
+    if (requestedKey == null || requestedKey == 'skyview_mellinger') return 'dss2_color';
+    return requestedKey;
+  }
+  if (requestedKey != null && surveys.any((p) => p.key == requestedKey)) {
+    return requestedKey;
+  }
+  return surveys
+          .where((p) => p.key == catalog!.defaultKey)
+          .map((p) => p.key)
+          .firstOrNull ??
+      surveys.first.key;
+}
+
+DetailView _concreteViewForSource(
+  String source,
+  String surveyKey,
+  List<SkyProviderInfo> surveys,
+) {
+  return switch (source) {
+    'jwst' => DetailView('jwst', surveyKey, 'Webb'),
+    'hst' => DetailView('hst', surveyKey, 'Hubble'),
+    _ => DetailView(
+        'survey',
+        surveyKey,
+        surveys.where((p) => p.key == surveyKey).map((p) => p.name).firstOrNull ?? 'DSS2 Color',
+      ),
+  };
+}
+
+/// Views offered for a landmark: only verified available sources are included so the user
+/// never taps dead options or receives a silent fallback image from another telescope.
+List<DetailView> detailViews(
+  Landmark lm,
+  ProviderCatalog? catalog,
+  String surveyKey, {
+  bool hasCurated = false,
+  Set<String>? availableViews,
+}) {
+  final surveys = detailSurveyProviders(catalog);
+  final surveyChips = surveys.isNotEmpty
+      ? [for (final p in surveys) DetailView('survey', p.key, p.name)]
+      : [DetailView('survey', surveyKey, 'DSS2 Color')];
+
+  final known = (lm.isStar || lm.hasHires == false) ? const {'survey'} : availableViews;
+
+  return [
+    if (hasCurated) const DetailView('curated', null, curatedSourceLabel),
+    if (known == null)
+      DetailView('auto', surveyKey, 'Finding best view…')
+    else ...[
+      if (known.contains('jwst')) DetailView('jwst', surveyKey, 'Webb'),
+      if (known.contains('hst')) DetailView('hst', surveyKey, 'Hubble'),
+    ],
+    ...surveyChips,
+  ];
+}
+
+/// The view the user explicitly picked last, and the last non-curated source before it.
 class DetailPreference {
   const DetailPreference({this.view, this.source});
 
@@ -47,8 +140,8 @@ class DetailPreferenceNotifier extends Notifier<DetailPreference> {
   @override
   DetailPreference build() => const DetailPreference();
 
-  void choose(DetailView v) => state = DetailPreference(
-      view: v, source: v.view == 'curated' ? state.source : v);
+  void choose(DetailView v) =>
+      state = DetailPreference(view: v, source: v.view == 'curated' ? state.source : v);
 }
 
 final detailPreferenceProvider =
@@ -59,7 +152,7 @@ class LandmarkDetailScreen extends ConsumerStatefulWidget {
 
   final Landmark landmark;
 
-  /// Survey the user picked on the result screen (default for close-ups and colour).
+  /// Survey the user picked on the result screen (normalised if wide-field-only).
   final String? providerKey;
 
   @override
@@ -67,48 +160,179 @@ class LandmarkDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _LandmarkDetailScreenState extends ConsumerState<LandmarkDetailScreen> {
-  /// What the user picked last (possibly "curated"), and the source to fall back to when
-  /// curated highlights are not available for this body.
-  late DetailView _view;
-  late DetailView _fallback;
+  DetailView? _selected;
 
   /// Credit, captions and facts are shown by default; the user can hide them.
   bool _showInfo = true;
 
   void _toggleInfo() => setState(() => _showInfo = !_showInfo);
 
-  @override
-  void initState() {
-    super.initState();
-    final pref = ref.read(detailPreferenceProvider);
-    final best = DetailView('auto', widget.providerKey, 'Best');
-    _view = pref.view ?? best;
-    _fallback = pref.source ?? best;
+  void _select(DetailView v) {
+    setState(() => _selected = v);
+    ref.read(detailPreferenceProvider.notifier).choose(v);
   }
 
-  void _select(DetailView v) {
-    setState(() {
-      _view = v;
-      if (v.view != 'curated') _fallback = v;
-    });
-    ref.read(detailPreferenceProvider.notifier).choose(v);
+  DetailView _resolveActiveView({
+    required Landmark lm,
+    required String surveyKey,
+    required List<SkyProviderInfo> surveys,
+    required bool hasCurated,
+    required Set<String>? knownAvail,
+  }) {
+    final pref = ref.read(detailPreferenceProvider);
+    final desired = _selected ?? pref.view;
+
+    if (desired?.view == 'curated' && hasCurated) {
+      return const DetailView('curated', null, curatedSourceLabel);
+    }
+
+    // If desired was 'curated' on an object without curated highlights, consider the last
+    // non-curated preference instead.
+    final candidate = desired?.view == 'curated' ? pref.source : desired;
+
+    if (knownAvail != null) {
+      if (candidate != null && candidate.view != 'auto') {
+        if (candidate.view == 'survey') {
+          final key = effectiveDetailSurveyKey(
+            ref.read(providerCatalogProvider).value,
+            candidate.providerKey ?? surveyKey,
+          );
+          return _concreteViewForSource('survey', key, surveys);
+        }
+        if (knownAvail.contains(candidate.view)) {
+          return _concreteViewForSource(candidate.view, surveyKey, surveys);
+        }
+      }
+      // Fall back to the highest-priority verified view for this landmark.
+      if (knownAvail.contains('jwst')) {
+        return _concreteViewForSource('jwst', surveyKey, surveys);
+      }
+      if (knownAvail.contains('hst')) {
+        return _concreteViewForSource('hst', surveyKey, surveys);
+      }
+      return _concreteViewForSource('survey', surveyKey, surveys);
+    }
+
+    // Availability not probed yet (DSO with hasHires == true or null):
+    // Honour an explicit survey choice immediately; otherwise probe via 'auto' first so we
+    // never request an unavailable telescope blindly.
+    if (candidate?.view == 'survey') {
+      final key = effectiveDetailSurveyKey(
+        ref.read(providerCatalogProvider).value,
+        candidate!.providerKey ?? surveyKey,
+      );
+      return _concreteViewForSource('survey', key, surveys);
+    }
+    return DetailView('auto', surveyKey, 'Finding best view…');
   }
 
   @override
   Widget build(BuildContext context) {
     final lm = widget.landmark;
     final hasCurated = ref.watch(curatedIndexProvider.select((i) => i?.has(lm.id) ?? false));
-    // Curated selected but this body has none: show the previous/default source instead.
-    final view = _view.view == 'curated' && !hasCurated ? _fallback : _view;
-    final curated = view.view == 'curated';
     final catalog = ref.watch(providerCatalogProvider).value;
-    final views = detailViews(lm, catalog, widget.providerKey, hasCurated: hasCurated);
+    final surveys = detailSurveyProviders(catalog);
+    final surveyKey = effectiveDetailSurveyKey(catalog, widget.providerKey);
+
+    final probedAvail = ref.watch(landmarkAvailabilityProvider.select((m) => m[lm.id]));
+    final knownAvail =
+        (lm.isStar || lm.hasHires == false) ? const <String>{'survey'} : probedAvail;
+
+    final view = _resolveActiveView(
+      lm: lm,
+      surveyKey: surveyKey,
+      surveys: surveys,
+      hasCurated: hasCurated,
+      knownAvail: knownAvail,
+    );
+    final curated = view.view == 'curated';
+    final views = detailViews(
+      lm,
+      catalog,
+      surveyKey,
+      hasCurated: hasCurated,
+      availableViews: knownAvail,
+    );
     final args = (lm.id, view);
-    // Curated images need none of the (slow) mosaic work.
+
+    if (!curated) {
+      ref.listen<AsyncValue<LandmarkDetail>>(landmarkDetailProvider(args), (prev, next) {
+        next.whenOrNull(
+          data: (d) {
+            final avail = d.availableViews != null
+                ? d.availableViews!.toSet()
+                : <String>{
+                    if (d.imageSource == 'jwst') 'jwst',
+                    if (d.imageSource == 'hst') 'hst',
+                    'survey',
+                  };
+            final concrete = _concreteViewForSource(d.imageSource, surveyKey, surveys);
+            ref.read(resolvedDetailCacheProvider.notifier).put(lm.id, concrete, d);
+            if (knownAvail == null || d.availableViews != null) {
+              ref.read(landmarkAvailabilityProvider.notifier).record(lm.id, avail);
+            }
+            if (view.view == 'auto' && mounted) {
+              final prefSource = ref.read(detailPreferenceProvider).source;
+              final target = (prefSource != null &&
+                      prefSource.view != 'auto' &&
+                      avail.contains(prefSource.view))
+                  ? _concreteViewForSource(prefSource.view, surveyKey, surveys)
+                  : concrete;
+              setState(() => _selected = target);
+            }
+          },
+          error: (e, _) {
+            if (e is ApiException &&
+                e.code == 'NO_COVERAGE' &&
+                (view.view == 'jwst' || view.view == 'hst')) {
+              ref.read(landmarkAvailabilityProvider.notifier).removeView(lm.id, view.view);
+              if (mounted) {
+                setState(() => _selected = null);
+                ScaffoldMessenger.of(context)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(SnackBar(content: Text(e.message)));
+              }
+            }
+          },
+        );
+      });
+    }
+
+    // Curated images need none of the mosaic work.
     final detail = curated ? null : ref.watch(landmarkDetailProvider(args));
     final credit = detail?.value != null && !detail!.isLoading ? detail.value : null;
+    final screenH = MediaQuery.sizeOf(context).height;
+    final shortLandscape = screenH < 480;
+
+    Widget buildDetailStage(AsyncValue<LandmarkDetail> dVal) {
+      final content = dVal.when(
+        skipLoadingOnReload: false,
+        data: (d) => InteractiveViewer(
+          key: ValueKey(view),
+          maxScale: 8,
+          child: Image.memory(d.image, fit: BoxFit.contain, gaplessPlayback: true),
+        ),
+        loading: () => _Loading(view: view),
+        error: (e, _) => _Error(
+          message: e is ApiException ? e.message : 'Could not load the image.',
+          onRetry: () => ref.invalidate(landmarkDetailProvider(args)),
+        ),
+      );
+      if (shortLandscape) {
+        return ColoredBox(
+          color: Colors.black,
+          child: SizedBox(
+            height: math.max(190.0, screenH * 0.62),
+            child: content,
+          ),
+        );
+      }
+      return AspectRatio(aspectRatio: 1, child: content);
+    }
+
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: shortLandscape ? 46 : kToolbarHeight,
         backgroundColor: Colors.black,
         title: Text(lm.name),
         actions: [
@@ -127,22 +351,7 @@ class _LandmarkDetailScreenState extends ConsumerState<LandmarkDetailScreen> {
           if (curated)
             _CuratedPanel(landmark: lm, showInfo: _showInfo)
           else if (detail != null)
-            AspectRatio(
-              aspectRatio: 1,
-              child: detail.when(
-                skipLoadingOnReload: false,
-                data: (d) => InteractiveViewer(
-                  key: ValueKey(view),
-                  maxScale: 8,
-                  child: Image.memory(d.image, fit: BoxFit.contain, gaplessPlayback: true),
-                ),
-                loading: () => _Loading(view: view),
-                error: (e, _) => _Error(
-                  message: e is ApiException ? e.message : 'Could not load the image.',
-                  onRetry: () => ref.invalidate(landmarkDetailProvider(args)),
-                ),
-              ),
-            ),
+            buildDetailStage(detail),
           // Credit and facts stay out of the way until asked for.
           _DetailsToggle(expanded: _showInfo, onPressed: _toggleInfo),
           AnimatedSize(
@@ -268,7 +477,7 @@ class _ViewPicker extends StatelessWidget {
                 avatar: Icon(
                   switch (v.view) {
                     'jwst' || 'hst' => Icons.auto_awesome,
-                    'auto' => Icons.star_outline,
+                    'auto' => Icons.hourglass_top_rounded,
                     'curated' => Icons.auto_awesome_motion,
                     _ => Icons.public,
                   },
@@ -295,7 +504,7 @@ class _Loading extends StatelessWidget {
     final text = switch (view.view) {
       'jwst' => 'Stitching Webb images…\nThe first time can take up to a minute.',
       'hst' => 'Stitching Hubble images…\nThe first time can take up to a minute.',
-      'auto' => 'Looking for Webb and Hubble images…\nThe first time can take up to a minute.',
+      'auto' => 'Checking available telescope images…\nThe first time can take up to a minute.',
       _ => 'Loading ${view.label}…',
     };
     return Center(
@@ -356,7 +565,7 @@ class _ImageCredit extends StatelessWidget {
               style: Theme.of(context).textTheme.labelLarge,
             ),
           ),
-        ]),
+        ],),
         if (detail.caption.isNotEmpty) Text(detail.caption, style: small),
         Text('Credit: ${detail.credit}', style: small),
       ]),

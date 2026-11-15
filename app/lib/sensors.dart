@@ -150,6 +150,10 @@ class OrientationTracker {
   int? magnetometerAccuracy;
   int? rotationAccuracy;
 
+  /// Latest Android Display rotation in degrees (0 = natural portrait, 90 = landscape left,
+  /// 180 = upside down, 270 = landscape right), or null when unavailable.
+  int? displayRotationDeg;
+
   SensorMode get mode => engine.mode;
   bool get hasData => engine.hasData;
 
@@ -175,8 +179,20 @@ class OrientationTracker {
         onError: (Object err) => lastError = err);
   }
 
+  @visibleForTesting
+  void handleEventForTest(List<num> event) => _onEvent(event);
+
   void _onEvent(dynamic event) {
     final d = [for (final v in event as List<dynamic>) (v as num).toDouble()];
+    if (d.length > 7 && d[7].isFinite) {
+      displayRotationDeg = ((d[7].round() % 360) + 360) % 360;
+    }
+    if (d[0].round() == 4) {
+      if (d[1].isFinite) {
+        displayRotationDeg = ((d[1].round() % 360) + 360) % 360;
+      }
+      return;
+    }
     final t = Duration(microseconds: d[6] ~/ 1000);
     final acc = d[5].isFinite ? d[5].round() : null;
     switch (d[0].round()) {
@@ -202,8 +218,9 @@ class OrientationTracker {
   double shake() => engine.shake();
 
   void stop() {
-    _sub?.cancel();
+    _sub?.cancel().catchError((_) {});
     _sub = null;
+    displayRotationDeg = null;
     engine.reset();
   }
 }
@@ -251,20 +268,33 @@ class LocationService {
   }
 }
 
-/// Horizontal FOV of a portrait photo from the camera's optics (Android camera2), or null.
+/// Horizontal FOV of portrait and landscape photos from the camera's optics (Android camera2).
 class CameraOptics {
   static const _channel = MethodChannel('night_sky/camera');
 
-  static Future<double?> portraitFovDeg(CameraDescription camera) async {
+  static Future<({double portraitDeg, double landscapeDeg})?> fieldOfViewDeg(
+    CameraDescription camera,
+  ) async {
     try {
       final r = await _channel
           .invokeMapMethod<String, double>('getCameraOptics', {'cameraId': camera.name});
       if (r == null) return null;
-      return fovFromOptics(
-        focalLengthMm: r['focalLength']!,
-        sensorWidthMm: r['sensorWidth']!,
-        sensorHeightMm: r['sensorHeight']!,
-        portrait: true,
+      final focal = r['focalLength']!;
+      final sw = r['sensorWidth']!;
+      final sh = r['sensorHeight']!;
+      return (
+        portraitDeg: fovFromOptics(
+          focalLengthMm: focal,
+          sensorWidthMm: sw,
+          sensorHeightMm: sh,
+          portrait: true,
+        ),
+        landscapeDeg: fovFromOptics(
+          focalLengthMm: focal,
+          sensorWidthMm: sw,
+          sensorHeightMm: sh,
+          portrait: false,
+        ),
       );
     } on PlatformException {
       return null;
@@ -272,4 +302,7 @@ class CameraOptics {
       return null;
     }
   }
+
+  static Future<double?> portraitFovDeg(CameraDescription camera) async =>
+      (await fieldOfViewDeg(camera))?.portraitDeg;
 }

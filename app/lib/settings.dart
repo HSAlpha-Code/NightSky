@@ -34,6 +34,38 @@ enum Steadiness {
   final double maxShakeDeg;
 }
 
+/// Allowed screen orientations across the app.
+enum ScreenOrientationMode {
+  auto(
+    'Auto',
+    'Rotates automatically between portrait and landscape',
+    [
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ],
+  ),
+  portrait(
+    'Portrait',
+    'Keeps the interface upright in portrait',
+    [DeviceOrientation.portraitUp],
+  ),
+  landscape(
+    'Landscape',
+    'Wide horizontal view for Sky View and Camera',
+    [
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ],
+  );
+
+  const ScreenOrientationMode(this.label, this.description, this.orientations);
+
+  final String label;
+  final String description;
+  final List<DeviceOrientation> orientations;
+}
+
 /// Text size, applied app-wide on top of the phone's own font size.
 enum FontSize {
   small('Small', 0.85),
@@ -136,10 +168,12 @@ class AppSettings {
     this.steadiness = Steadiness.normal,
     this.autoCapture = false,
     this.showPointingReadout = true,
+    this.orientationMode = ScreenOrientationMode.auto,
     this.fontSize = FontSize.normal,
     this.skyQuality = SkyQuality.balanced,
     this.startInSkyView = false,
     this.nightVision = false,
+    this.horizonShading = true,
     this.useManualLocation = false,
     this.manualLatitude,
     this.manualLongitude,
@@ -158,6 +192,9 @@ class AppSettings {
 
   /// Show where the camera points (altitude/heading) over the camera preview.
   final bool showPointingReadout;
+
+  /// Portrait, landscape, or automatic device rotation across the app.
+  final ScreenOrientationMode orientationMode;
   final FontSize fontSize;
 
   /// Rendering quality for Sky View (Balanced by default).
@@ -168,6 +205,10 @@ class AppSettings {
 
   /// Red night-vision filter in Sky View to preserve dark adaptation.
   final bool nightVision;
+
+  /// Dim the below-horizon hemisphere and apply twilight/daylight sky glow above the horizon
+  /// in Sky View. Turning this off renders the full 360° sky map at uniform brightness.
+  final bool horizonShading;
 
   /// When true, Sky View uses [manualLatitude] and [manualLongitude] instead of GPS.
   /// When false, [manualLatitude]/[manualLongitude] may still hold the last known GPS fix
@@ -186,10 +227,12 @@ class AppSettings {
     Steadiness? steadiness,
     bool? autoCapture,
     bool? showPointingReadout,
+    ScreenOrientationMode? orientationMode,
     FontSize? fontSize,
     SkyQuality? skyQuality,
     bool? startInSkyView,
     bool? nightVision,
+    bool? horizonShading,
     bool? useManualLocation,
     double? manualLatitude,
     double? manualLongitude,
@@ -204,10 +247,12 @@ class AppSettings {
         steadiness: steadiness ?? this.steadiness,
         autoCapture: autoCapture ?? this.autoCapture,
         showPointingReadout: showPointingReadout ?? this.showPointingReadout,
+        orientationMode: orientationMode ?? this.orientationMode,
         fontSize: fontSize ?? this.fontSize,
         skyQuality: skyQuality ?? this.skyQuality,
         startInSkyView: startInSkyView ?? this.startInSkyView,
         nightVision: nightVision ?? this.nightVision,
+        horizonShading: horizonShading ?? this.horizonShading,
         useManualLocation:
             clearManualLocation ? false : (useManualLocation ?? this.useManualLocation),
         manualLatitude: clearManualLocation ? null : (manualLatitude ?? this.manualLatitude),
@@ -223,10 +268,12 @@ class AppSettings {
         'steadiness': steadiness.name,
         'autoCapture': autoCapture,
         'showPointingReadout': showPointingReadout,
+        'orientationMode': orientationMode.name,
         'fontSize': fontSize.name,
         'skyQuality': skyQuality.name,
         'startInSkyView': startInSkyView,
         'nightVision': nightVision,
+        'horizonShading': horizonShading,
         'useManualLocation': useManualLocation,
         if (manualLatitude != null) 'manualLatitude': manualLatitude,
         if (manualLongitude != null) 'manualLongitude': manualLongitude,
@@ -257,10 +304,12 @@ class AppSettings {
       steadiness: pick(Steadiness.values, j['steadiness'], d.steadiness),
       autoCapture: flag('autoCapture', d.autoCapture),
       showPointingReadout: flag('showPointingReadout', d.showPointingReadout),
+      orientationMode: pick(ScreenOrientationMode.values, j['orientationMode'], d.orientationMode),
       fontSize: pick(FontSize.values, j['fontSize'], d.fontSize),
       skyQuality: pick(SkyQuality.values, j['skyQuality'], d.skyQuality),
       startInSkyView: flag('startInSkyView', d.startInSkyView),
       nightVision: flag('nightVision', d.nightVision),
+      horizonShading: flag('horizonShading', d.horizonShading),
       useManualLocation: hasCoords && flag('useManualLocation', d.useManualLocation),
       manualLatitude: hasCoords ? lat : null,
       manualLongitude: hasCoords ? lon : null,

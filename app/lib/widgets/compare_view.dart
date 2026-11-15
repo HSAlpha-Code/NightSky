@@ -1,6 +1,9 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+
+import 'glass.dart';
 
 /// Sky image over the original photo with a draggable divider: left of the divider shows the
 /// original, right shows the survey image. Both images are fitted to the same box so the
@@ -15,6 +18,7 @@ class CompareView extends StatefulWidget {
     required this.replacement,
     required this.aspectRatio,
     this.initialSplit = 0.0,
+    this.onSplitChanged,
     this.overlayBuilder,
   });
 
@@ -29,6 +33,9 @@ class CompareView extends StatefulWidget {
 
   /// 0 = only the replacement visible, 1 = only the original.
   final double initialSplit;
+
+  /// Called when the user drags the on-image divider.
+  final ValueChanged<double>? onSplitChanged;
 
   static const double maxZoom = 8;
 
@@ -47,6 +54,12 @@ class CompareViewState extends State<CompareView> {
   double get scale => zoom.value.getMaxScaleOnAxis();
 
   void setSplit(double v) => setState(() => split = v.clamp(0.0, 1.0));
+
+  void _dragSplit(double v) {
+    final next = v.clamp(0.0, 1.0);
+    setState(() => split = next);
+    widget.onSplitChanged?.call(next);
+  }
 
   void resetZoom() => zoom.value = Matrix4.identity();
 
@@ -99,18 +112,38 @@ class CompareViewState extends State<CompareView> {
                       left: x - 1,
                       top: 0,
                       bottom: 0,
-                      child: const IgnorePointer(
-                          child: SizedBox(width: 2, child: ColoredBox(color: Colors.white70))),
+                      child: IgnorePointer(
+                        child: Container(
+                          width: 2,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.88),
+                            boxShadow: const [
+                              BoxShadow(color: Colors.black87, blurRadius: 6),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   if (split > 0 && split < 1)
                     Positioned(
-                      left: x - 16,
-                      top: box.maxHeight / 2 - 16,
-                      child: const IgnorePointer(
-                        child: CircleAvatar(
-                          radius: 16,
-                          backgroundColor: Colors.white,
-                          child: Icon(Icons.compare_arrows, size: 18, color: Colors.black),
+                      left: x - 18,
+                      top: box.maxHeight / 2 - 18,
+                      child: IgnorePointer(
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xE6101420),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.85),
+                              width: 1.5,
+                            ),
+                            boxShadow: const [
+                              BoxShadow(color: Colors.black54, blurRadius: 10, spreadRadius: 1),
+                            ],
+                          ),
+                          child: const Icon(Icons.compare_arrows, size: 18, color: Colors.white),
                         ),
                       ),
                     ),
@@ -123,18 +156,20 @@ class CompareViewState extends State<CompareView> {
                     bottom: 0,
                     width: math.min(CompareView.dividerHitWidth, box.maxWidth),
                     child: GestureDetector(
-                      // Opaque: a drag here moves the divider and never also pans the image.
-                      behavior: HitTestBehavior.opaque,
-                      onHorizontalDragUpdate: (d) => setSplit(split + d.delta.dx / box.maxWidth),
+                      // Translucent: horizontal drags win the arena over panning, while taps
+                      // pass through to landmarks underneath.
+                      behavior: HitTestBehavior.translucent,
+                      dragStartBehavior: DragStartBehavior.down,
+                      onHorizontalDragUpdate: (d) => _dragSplit(split + d.delta.dx / box.maxWidth),
                     ),
                   ),
                   if (s > 1.01)
                     Positioned(
-                      right: 8,
-                      bottom: 8,
-                      child: IconButton.filledTonal(
+                      right: 10,
+                      bottom: 10,
+                      child: GlassIconButton(
                         tooltip: 'Reset zoom',
-                        icon: const Icon(Icons.zoom_out_map),
+                        icon: Icons.zoom_out_map,
                         onPressed: resetZoom,
                       ),
                     ),

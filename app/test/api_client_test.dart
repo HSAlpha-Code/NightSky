@@ -21,8 +21,9 @@ void main() {
     backend.json('GET /api/providers', providersJson);
     final c = await api.getProviders();
     expect(c.defaultKey, 'dss2_color');
-    expect(c.providers.map((p) => p.key), ['dss2_color', 'panstarrs']);
-    expect(c.providers[1].allSky, isFalse);
+    expect(c.providers.map((p) => p.key), ['dss2_color', 'skyview_mellinger']);
+    expect(c.providers[0].supportsDetail, isTrue);
+    expect(c.providers[1].supportsDetail, isFalse);
   });
 
   test('solve uploads multipart image + JSON metadata', () async {

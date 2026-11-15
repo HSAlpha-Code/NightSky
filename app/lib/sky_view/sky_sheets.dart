@@ -186,7 +186,7 @@ class SkyObjectSheet extends ConsumerWidget {
                     },
                     icon: const Icon(Icons.auto_awesome, size: 18),
                     label: Text(
-                      object.kind == SkyBodyKind.star ? 'Survey close-up' : 'Webb / Hubble close-up',
+                      object.kind == SkyBodyKind.star ? 'Survey close-up' : 'Telescope close-up',
                     ),
                   ),
               ],
@@ -378,14 +378,20 @@ class _SkySearchSheetState extends State<SkySearchSheet> {
       _SearchCategory.deepSky: 'Deep sky',
     };
 
+    final screenSize = MediaQuery.sizeOf(context);
+    final isShort = screenSize.height < 500;
+    final kbBottom = MediaQuery.viewInsetsOf(context).bottom;
+    final showCategories =
+        _queryController.text.trim().isEmpty && (screenSize.height - kbBottom > 220);
+
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.75,
+      initialChildSize: isShort ? 0.88 : 0.75,
       minChildSize: 0.45,
-      maxChildSize: 0.92,
+      maxChildSize: 0.94,
       builder: (context, scrollController) {
         return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+          padding: EdgeInsets.only(bottom: kbBottom),
           child: Column(
             children: [
               Padding(
@@ -409,7 +415,7 @@ class _SkySearchSheetState extends State<SkySearchSheet> {
                   onChanged: (_) => setState(() {}),
                 ),
               ),
-              if (_queryController.text.trim().isEmpty)
+              if (showCategories)
                 SizedBox(
                   height: 44,
                   child: ListView(
@@ -872,6 +878,8 @@ class SkyLayersSheet extends ConsumerWidget {
                     (v) => layersNotifier.update((l) => l.copyWith(labels: v))),
                 chip('horizon', 'Horizon & Compass', layers.horizon,
                     (v) => layersNotifier.update((l) => l.copyWith(horizon: v))),
+                chip('horizon-shading', 'Horizon Shading', s.horizonShading,
+                    (v) => settingsNotifier.update((st) => st.copyWith(horizonShading: v))),
                 chip('night-vision', 'Red Night Vision', s.nightVision,
                     (v) => settingsNotifier.update((st) => st.copyWith(nightVision: v))),
               ],
@@ -909,6 +917,25 @@ class SkyLayersSheet extends ConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text('Screen Orientation', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<ScreenOrientationMode>(
+                key: const Key('sky-orientation-segmented'),
+                segments: [
+                  for (final m in ScreenOrientationMode.values)
+                    ButtonSegment<ScreenOrientationMode>(
+                      value: m,
+                      label: Text(m.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ),
+                ],
+                selected: {s.orientationMode},
+                onSelectionChanged: (sel) =>
+                    settingsNotifier.update((st) => st.copyWith(orientationMode: sel.first)),
               ),
             ),
             const Divider(height: 20),

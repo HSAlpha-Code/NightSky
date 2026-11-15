@@ -24,11 +24,13 @@ uniform float uZenithY;
 uniform float uZenithZ;
 
 // Sun altitude in degrees (-90..+90), exposure multiplier, red night-vision flag,
-// and square edge dimension (in texels) of each hemisphere texture (e.g. 3200 or 4096).
+// square edge dimension (in texels) of each hemisphere texture (e.g. 3200 or 4096),
+// and horizon/twilight ground-shading flag (1.0 = shade sky & dim below horizon, 0.0 = uniform).
 uniform float uSunAltDeg;
 uniform float uExposure;
 uniform float uNightVision;
 uniform float uHemiSize;
+uniform float uHorizonShading;
 
 // Dual 4096x4096 hemispheres forming an 8192x4096 8K Galactic CAR panorama:
 // uPanoEast covers global u in [0, 0.5] (l in [+180, 0]);
@@ -95,19 +97,22 @@ void main() {
 
   float sinAlt = dot(dir, zenith);
 
-  float twilight = smoothstep(-15.0, 6.0, uSunAltDeg);
-  if (twilight > 0.001 && sinAlt > -0.05) {
-    float horizonGlow = pow(1.0 - clamp(sinAlt, 0.0, 1.0), 2.4);
-    vec3 zenithTint = vec3(0.05, 0.13, 0.32);
-    vec3 horizonTint = vec3(0.20, 0.24, 0.42);
-    vec3 scatter = mix(zenithTint, horizonTint, horizonGlow) * twilight * 0.65;
-    sky = mix(sky, sky * (1.0 - 0.55 * twilight) + scatter, 0.85);
-  }
+  if (uHorizonShading > 0.5) {
+    float twilight = smoothstep(-15.0, 6.0, uSunAltDeg);
+    float aboveMask = smoothstep(-0.08, 0.02, sinAlt);
+    if (twilight > 0.001 && aboveMask > 0.001) {
+      float horizonGlow = pow(1.0 - clamp(sinAlt, 0.0, 1.0), 2.4);
+      vec3 zenithTint = vec3(0.05, 0.13, 0.32);
+      vec3 horizonTint = vec3(0.20, 0.24, 0.42);
+      vec3 scatter = mix(zenithTint, horizonTint, horizonGlow) * twilight * 0.65;
+      sky = mix(sky, sky * (1.0 - 0.55 * twilight) + scatter, 0.85 * aboveMask);
+    }
 
-  if (sinAlt < 0.0) {
-    float groundMix = smoothstep(0.0, -0.08, sinAlt);
-    vec3 groundCol = vec3(0.018, 0.024, 0.036) + sky * 0.18;
-    sky = mix(sky, groundCol, groundMix * 0.88);
+    if (sinAlt < 0.0) {
+      float groundMix = smoothstep(0.0, -0.08, sinAlt);
+      vec3 groundCol = vec3(0.018, 0.024, 0.036) + sky * 0.18;
+      sky = mix(sky, groundCol, groundMix * 0.88);
+    }
   }
 
   if (uNightVision > 0.5) {

@@ -33,7 +33,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   final _location = LocationService();
   CameraController? _controller;
   CameraDescription? _camera;
-  double? _fovDeg;
+  ({double portraitDeg, double landscapeDeg})? _cameraFov;
   String? _cameraError;
   bool _cameraPermissionDenied = false;
   LocationStatus? _locationStatus;
@@ -127,9 +127,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       final controller =
           CameraController(_camera!, ResolutionPreset.veryHigh, enableAudio: false);
       await controller.initialize();
-      await controller.lockCaptureOrientation(DeviceOrientation.portraitUp);
       await controller.setFlashMode(FlashMode.off);
-      _fovDeg ??= await CameraOptics.portraitFovDeg(_camera!);
+      _cameraFov ??= await CameraOptics.fieldOfViewDeg(_camera!);
       if (!mounted) {
         await controller.dispose();
         return;
@@ -149,14 +148,22 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
               : 'Could not start the camera (${e.description ?? e.code}).';
         });
       }
+    } on MissingPluginException {
+      if (mounted) {
+        setState(() => _cameraError = 'Camera is not available on this device.');
+      }
     }
   }
 
   Future<void> _initLocation() async {
-    final status = await _location.ensurePermission();
-    if (!mounted) return;
-    setState(() => _locationStatus = status);
-    if (status == LocationStatus.granted) unawaited(_location.warmUp());
+    try {
+      final status = await _location.ensurePermission();
+      if (!mounted) return;
+      setState(() => _locationStatus = status);
+      if (status == LocationStatus.granted) unawaited(_location.warmUp());
+    } on MissingPluginException {
+      // Desktop / unit test environments without geolocator plugin.
+    }
   }
 
   Future<void> _capture() async {
@@ -182,7 +189,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         // Both sensor modes are referenced to magnetic north; the backend applies the
         // World Magnetic Model declination.
         reference: 'magnetic_north',
-        fovDeg: _fovDeg,
+        fovDeg: _cameraFov?.portraitDeg,
+        landscapeFovDeg: _cameraFov?.landscapeDeg,
+        displayRotationDeg: _orientation.displayRotationDeg,
       );
       ref.read(sessionProvider.notifier).start(raw, meta);
       if (!mounted) return;
@@ -231,28 +240,97 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             ),
           ),
           SafeArea(
-            child: Column(children: [
-              _topBar(),
-              ..._banners().map((b) =>
-                  Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 8), child: b)),
-              if (_showTips && ready)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: CaptureTips(onClose: () => setState(() => _showTips = false)),
-                ),
-              const Spacer(),
-              if (ready && _orientation.hasData) _readouts(),
-              _controls(),
-            ]),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isLandscape = constraints.maxWidth > constraints.maxHeight;
+                final bannerCards = [
+                  for (final b in _banners())
+                    Padding(padding: const EdgeInsets.only(bottom: 8), child: b),
+                  if (_showTips && ready)
+                    CaptureTips(onClose: () => setState(() => _showTips = false)),
+                ];
+
+                if (isLandscape) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _topBar(compact: true),
+                            Expanded(
+                              child: bannerCards.isEmpty
+                                  ? const SizedBox.shrink()
+                                  : Align(
+                                      alignment: Alignment.topLeft,
+                                      child: SingleChildScrollView(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                                        child: ConstrainedBox(
+                                          constraints: const BoxConstraints(maxWidth: 460),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: bannerCards,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 4, 8, 10),
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 6,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  _providerPill(),
+                                  if (ready && _orientation.hasData) ..._readoutPills(),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 12, 16, 12),
+                        child: Center(child: _shutterButton()),
+                      ),
+                    ],
+                  );
+                }
+
+                return Column(children: [
+                  _topBar(),
+                  Expanded(
+                    child: bannerCards.isEmpty
+                        ? const SizedBox.shrink()
+                        : Align(
+                            alignment: Alignment.topCenter,
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: bannerCards,
+                              ),
+                            ),
+                          ),
+                  ),
+                  if (ready && _orientation.hasData) _readouts(),
+                  _controls(),
+                ]);
+              },
+            ),
           ),
         ]),
       ),
     );
   }
 
-  Widget _topBar() {
+  Widget _topBar({bool compact = false}) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 12, 12),
+      padding: compact
+          ? const EdgeInsets.fromLTRB(16, 4, 8, 6)
+          : const EdgeInsets.fromLTRB(20, 8, 12, 12),
       child: Row(children: [
         const Icon(Icons.auto_awesome, color: Colors.white, size: 22),
         const SizedBox(width: 8),
@@ -262,10 +340,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
               color: Colors.white, fontWeight: FontWeight.w600, letterSpacing: 0.5),
         ),
         const Spacer(),
-        GlassIconButton(
+        ModeSwitchPill(
           key: const Key('open-sky-view'),
-          tooltip: 'Sky View',
-          icon: Icons.public,
+          isSkyView: false,
+          tooltip: 'Switch to Sky View',
+          height: compact ? 38 : 44,
           onPressed: _openSkyView,
         ),
         const SizedBox(width: 8),
@@ -284,6 +363,23 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         ),
       ]),
     );
+  }
+
+  List<Widget> _readoutPills() {
+    final settings = ref.watch(settingsProvider);
+    return [
+      if (settings.showPointingReadout && _pointing != null)
+        PointingReadout(
+          altitudeDeg: _pointing!.altitude,
+          azimuthDeg: _pointing!.azimuth,
+          usingGyroscope: _orientation.mode == SensorMode.gyro,
+        ),
+      SteadyIndicator(
+        shakeDeg: _shake,
+        maxShakeDeg: settings.steadiness.maxShakeDeg,
+        autoCaptureProgress: _autoCaptureProgress,
+      ),
+    ];
   }
 
   Widget _readouts() {
@@ -396,23 +492,24 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     if (controller == null || !controller.value.isInitialized) {
       return const Center(child: CircularProgressIndicator());
     }
-    // previewSize is reported in sensor (landscape) orientation; the app is portrait-only,
-    // so swap it and scale the feed to cover the whole screen (cropping the overflow).
+    // previewSize is reported in sensor (landscape) orientation; swap in portrait and scale
+    // the feed to cover the whole screen (cropping the overflow).
     final size = controller.value.previewSize;
     if (size == null) return Center(child: CameraPreview(controller));
+    final isLandscape = MediaQuery.orientationOf(context) == Orientation.landscape;
     return ClipRect(
       child: FittedBox(
         fit: BoxFit.cover,
         child: SizedBox(
-          width: size.shortestSide,
-          height: size.longestSide,
+          width: isLandscape ? size.longestSide : size.shortestSide,
+          height: isLandscape ? size.shortestSide : size.longestSide,
           child: CameraPreview(controller),
         ),
       ),
     );
   }
 
-  Widget _controls() {
+  Widget _providerPill() {
     final selected = ref.watch(selectedProviderProvider);
     final catalog = ref.watch(providerCatalogProvider).value;
     final providerName = catalog?.providers
@@ -420,64 +517,69 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             .map((p) => p.name)
             .firstOrNull ??
         'Image source';
+    return Glass(
+      borderRadius: const BorderRadius.all(Radius.circular(999)),
+      child: InkWell(
+        onTap: () => showProviderPicker(context, ref),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.layers_outlined, size: 18, color: Colors.white),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(providerName,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Colors.white)),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _shutterButton() {
     final enabled = _controller != null && !_capturing;
+    // Shutter: white ring around a solid disc, the familiar camera-app look.
+    return Container(
+      width: 84,
+      height: 84,
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 4),
+      ),
+      child: FilledButton(
+        key: const Key('shutter'),
+        style: FilledButton.styleFrom(
+          shape: const CircleBorder(),
+          padding: EdgeInsets.zero,
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          disabledBackgroundColor: Colors.white38,
+        ),
+        onPressed: enabled ? _capture : null,
+        child: _capturing
+            ? const SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(strokeWidth: 3, color: Colors.black))
+            : const Icon(Icons.camera_alt, size: 30),
+      ),
+    );
+  }
+
+  Widget _controls() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
       child: Row(children: [
         Expanded(
           child: Align(
             alignment: Alignment.centerLeft,
-            child: Glass(
-              borderRadius: const BorderRadius.all(Radius.circular(999)),
-              child: InkWell(
-                onTap: () => showProviderPicker(context, ref),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.layers_outlined, size: 18, color: Colors.white),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(providerName,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context)
-                              .textTheme
-                              .labelLarge
-                              ?.copyWith(color: Colors.white)),
-                    ),
-                  ]),
-                ),
-              ),
-            ),
+            child: _providerPill(),
           ),
         ),
         const SizedBox(width: 12),
-        // Shutter: white ring around a solid disc, the familiar camera-app look.
-        Container(
-          width: 84,
-          height: 84,
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 4),
-          ),
-          child: FilledButton(
-            key: const Key('shutter'),
-            style: FilledButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              backgroundColor: Colors.white,
-              foregroundColor: Colors.black,
-              disabledBackgroundColor: Colors.white38,
-            ),
-            onPressed: enabled ? _capture : null,
-            child: _capturing
-                ? const SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: CircularProgressIndicator(strokeWidth: 3, color: Colors.black))
-                : const Icon(Icons.camera_alt, size: 30),
-          ),
-        ),
+        _shutterButton(),
         const SizedBox(width: 12),
         const Expanded(child: SizedBox()),
       ]),

@@ -71,9 +71,9 @@ void main() {
     backend.json('POST /api/solve', solveJson);
     backend.image('POST /api/sky-image', [1], {'X-Provider': 'dss2_color'});
     await session().start(photo, meta);
-    await session().changeProvider('panstarrs');
-    expect(container.read(selectedProviderProvider), 'panstarrs');
-    expect((backend.requests.last.data as Map)['provider'], 'panstarrs');
+    await session().changeProvider('skyview_mellinger');
+    expect(container.read(selectedProviderProvider), 'skyview_mellinger');
+    expect((backend.requests.last.data as Map)['provider'], 'skyview_mellinger');
     expect(backend.requests.where((r) => r.path == '/solve').length, 1);
   });
 
@@ -143,5 +143,39 @@ void main() {
     session().reset();
     expect(state().stage, Stage.idle);
     expect(state().photo, isNull);
+  });
+
+  test('landscape photo sends landscape rotation, FOV, dimensions and aspect', () async {
+    final landscapeRaw = Uint8List.fromList(img.encodeJpg(img.Image(width: 4000, height: 3000)));
+    final landscapeMeta = CaptureMetadata(
+      timestampUtc: DateTime.utc(2026, 11, 12),
+      latitude: 28.6,
+      longitude: 77.2,
+      fovDeg: 52.6,
+      landscapeFovDeg: 66.8,
+      displayRotationDeg: 90,
+    );
+    backend.json('POST /api/solve', solveJson);
+    backend.image('POST /api/sky-image', [5], {'X-Provider': 'dss2_color'});
+    backend.json('GET /api/landmarks', landmarksJson(pending: false));
+
+    await session().start(landscapeRaw, landscapeMeta);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final s = state();
+    expect(s.stage, Stage.done);
+    expect((s.photo!.width, s.photo!.height), (1600, 1200));
+
+    final solveForm = backend.requests.firstWhere((r) => r.path == '/solve').data as FormData;
+    final sentMeta =
+        jsonDecode(solveForm.fields.firstWhere((f) => f.key == 'metadata').value) as Map;
+    expect(sentMeta['image_rotation_deg'], 90);
+    expect(sentMeta['fov_deg'], closeTo(66.8, 1e-6));
+
+    final skyBody = backend.requests.firstWhere((r) => r.path == '/sky-image').data as Map;
+    expect((skyBody['width'], skyBody['height']), (1200, 900));
+
+    final lmQuery = backend.requests.firstWhere((r) => r.path == '/landmarks').queryParameters;
+    expect(lmQuery['aspect'], closeTo(3 / 4, 0.001));
   });
 }

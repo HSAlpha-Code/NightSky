@@ -5,6 +5,7 @@ import 'dart:ui' show Offset, Size;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
+import 'package:night_sky/sky_math.dart';
 import 'package:night_sky/sky_view/astro_math.dart';
 import 'package:night_sky/sky_view/ephemeris.dart';
 import 'package:night_sky/sky_view/sky_catalog.dart';
@@ -183,6 +184,94 @@ void main() {
       final guide = cam.guideTowards(eastIcrs, size);
       expect(guide.screenDir.dx, lessThan(-0.8));
       expect(guide.onScreen, isNull);
+    });
+
+    test('landscape SkyCamera aligns sensor axes for 90°/270° and preserves roll in manual mode',
+        () {
+      // Build device->world quaternion for a phone aimed at (altDeg, azDeg) and rolled around its
+      // viewing axis so that device +X (+90° CCW hold) or -X (270° CW hold) points towards zenith.
+      List<double> landscapePhoneQuat(double altDeg, double azDeg, {required bool earpieceLeft}) {
+        final fwd = altAzToEnu(altDeg, azDeg).normalized;
+        final hRight = fwd.cross(Vec3.up).normalized;
+        final hUp = hRight.cross(fwd).normalized;
+        // Earpiece left (90° CCW): +X_dev = hUp, +Y_dev = -hRight, +Z_dev = -fwd.
+        // Earpiece right (90° CW): +X_dev = -hUp, +Y_dev = +hRight, +Z_dev = -fwd.
+        final devX = earpieceLeft ? hUp : -hUp;
+        final devY = earpieceLeft ? -hRight : hRight;
+        final devZ = -fwd;
+        final m = Mat3.fromColumns(devX, devY, devZ);
+        return matrixToQuaternion([
+          m.m00, m.m01, m.m02,
+          m.m10, m.m11, m.m12,
+          m.m20, m.m21, m.m22,
+        ]);
+      }
+
+      final when = DateTime.utc(2026, 11, 11, 22, 0);
+      const landscapeSize = Size(800, 360);
+
+      for (final (earpieceLeft, rotDeg, expectedPortraitRoll) in [
+        (true, 90.0, 90.0),
+        (false, 270.0, -90.0),
+      ]) {
+        final q = landscapePhoneQuat(35.0, 180.0, earpieceLeft: earpieceLeft);
+
+        // 1. Native Landscape UI (display rotated to 90° or 270°): horizon is upright (roll = 0°).
+        final camLandscape = SkyCamera.fromSensorQuaternion(
+          quaternion: q,
+          declinationDeg: 0.0,
+          latitudeDeg: 28.6139,
+          longitudeDeg: 77.2090,
+          when: when,
+          fovDeg: 60.0,
+          screenRotationDeg: rotDeg,
+        );
+        expect(camLandscape.centerAltAz.altitudeDeg, closeTo(35.0, 1e-5));
+        expect(camLandscape.centerAltAz.azimuthDeg, closeTo(180.0, 1e-5));
+        expect(camLandscape.screenRollDeg, closeTo(0.0, 1e-5));
+        expect(camLandscape.horizontalFovDeg(landscapeSize), greaterThan(95.0));
+
+        // Project/unproject round-trip on wide landscape viewport.
+        const pt = Offset(640, 110);
+        final ray = camLandscape.unprojectToIcrs(pt, landscapeSize);
+        final reprojected = camLandscape.projectIcrs(ray, landscapeSize)!;
+        expect(reprojected.dx, closeTo(pt.dx, 1e-5));
+        expect(reprojected.dy, closeTo(pt.dy, 1e-5));
+
+        // 2. Portrait-locked OS (screenRotationDeg = 0°) while phone is physically held sideways:
+        //    live camera has ±90° roll, and entering manual mode with snapRollToQuadrantDeg keeps
+        //    the exact same sky pose without snapping back to portrait!
+        final camPortraitLocked = SkyCamera.fromSensorQuaternion(
+          quaternion: q,
+          declinationDeg: 0.0,
+          latitudeDeg: 28.6139,
+          longitudeDeg: 77.2090,
+          when: when,
+          fovDeg: 60.0,
+          screenRotationDeg: 0.0,
+        );
+        expect(camPortraitLocked.screenRollDeg, closeTo(expectedPortraitRoll, 1e-5));
+
+        final manualCam = SkyCamera.fromAltAz(
+          altitudeDeg: camPortraitLocked.centerAltAz.altitudeDeg,
+          azimuthDeg: camPortraitLocked.centerAltAz.azimuthDeg,
+          latitudeDeg: 28.6139,
+          longitudeDeg: 77.2090,
+          when: when,
+          fovDeg: 60.0,
+          rollDeg: snapRollToQuadrantDeg(camPortraitLocked.screenRollDeg),
+        );
+        expect(manualCam.screenRollDeg, closeTo(expectedPortraitRoll, 1e-5));
+
+        const portraitSize = Size(360, 800);
+        final testStar = raDecToVec(83.822, -5.391);
+        final livePos = camPortraitLocked.projectIcrs(testStar, portraitSize);
+        final manualPos = manualCam.projectIcrs(testStar, portraitSize);
+        if (livePos != null || manualPos != null) {
+          expect(manualPos!.dx, closeTo(livePos!.dx, 1e-4));
+          expect(manualPos.dy, closeTo(livePos.dy, 1e-4));
+        }
+      }
     });
   });
 

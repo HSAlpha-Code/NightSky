@@ -1,14 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:night_sky/api_client.dart';
 import 'package:night_sky/models.dart';
+import 'package:night_sky/screens/camera_screen.dart';
 import 'package:night_sky/screens/landmark_detail_screen.dart';
 import 'package:night_sky/screens/result_screen.dart';
 import 'package:night_sky/state.dart';
@@ -35,8 +36,8 @@ void main() {
     ));
     expect(find.text('DSS2 Color'), findsOneWidget);
     expect(find.text('Default'), findsOneWidget);
-    await tester.tap(find.text('Pan-STARRS DR2 (STScI)'));
-    expect(picked, 'panstarrs');
+    await tester.tap(find.text('Mellinger Color'));
+    expect(picked, 'skyview_mellinger');
   });
 
   testWidgets('compare view drag moves the divider', (tester) async {
@@ -70,6 +71,82 @@ void main() {
     expect(key.currentState!.split, inInclusiveRange(0.44, 0.5));
     // The divider follows the split.
     expect(find.byIcon(Icons.compare_arrows), findsOneWidget);
+  });
+
+  testWidgets('landmarks in the leftmost divider strip are clickable without zooming',
+      (tester) async {
+    final key = GlobalKey<CompareViewState>();
+    final tapped = <String>[];
+    const leftEdgeLandmark = Landmark(
+      id: 'HIP1',
+      name: 'Left Edge Star',
+      kind: 'star',
+      typeLabel: 'Star',
+      x: 0.04, // 12 px from left in a 300 px box, inside the 48 px divider hit strip
+      y: 0.5,
+    );
+    const midLandmark = Landmark(
+      id: 'M42',
+      name: 'Mid Nebula',
+      kind: 'dso',
+      typeLabel: 'Nebula',
+      x: 0.53, // 159 px: 9 px right of a 0.5 split, still inside dividerHitWidth / 2 (24 px)
+      y: 0.5,
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: SizedBox(
+            width: 300,
+            height: 400,
+            child: CompareView(
+              key: key,
+              original: MemoryImage(png),
+              replacement: MemoryImage(png),
+              aspectRatio: 0.75,
+              overlayBuilder: (scale) => LandmarkOverlay(
+                landmarks: const [leftEdgeLandmark, midLandmark],
+                scale: scale,
+                onTap: (lm) => tapped.add(lm.id),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+
+    // At split = 0 and 1x zoom, tapping a landmark near the left edge reaches it directly.
+    await tester.tap(find.byTooltip('Left Edge Star'));
+    await tester.pump();
+    expect(tapped, ['HIP1']);
+
+    // Horizontal drag starting in the leftmost strip still moves the divider cleanly
+    // without panning, even when zoomed in.
+    key.currentState!.zoom.value = Matrix4.diagonal3Values(2, 2, 1);
+    await tester.pump();
+    final beforeZoom = key.currentState!.zoom.value.clone();
+    final gesture =
+        await tester.startGesture(tester.getTopLeft(find.byType(AspectRatio)).translate(12, 100));
+    for (var i = 0; i < 15; i++) {
+      await gesture.moveBy(const Offset(10, 0));
+      await tester.pump();
+    }
+    await gesture.up();
+    expect(key.currentState!.split, closeTo(0.5, 1e-6));
+    expect(key.currentState!.zoom.value, beforeZoom);
+    key.currentState!.resetZoom();
+    await tester.pump();
+
+    // Left of the divider is hidden under the original photo (not tappable); right of the
+    // divider is tappable even within dividerHitWidth / 2 of the divider line.
+    await tester.tap(find.byTooltip('Left Edge Star'), warnIfMissed: false);
+    await tester.pump();
+    expect(tapped, ['HIP1']);
+
+    await tester.tap(find.byTooltip('Mid Nebula'));
+    await tester.pump();
+    expect(tapped, ['HIP1', 'M42']);
   });
 
   testWidgets('compare view: pinch zooms both images, markers keep their size, reset',
@@ -237,10 +314,11 @@ void main() {
             'landmark': {},
             'view': o.queryParameters['view'],
             'image_source': survey ? 'survey' : 'jwst',
+            'available_views': ['jwst', 'hst', 'survey'],
             'credit': survey
-                ? 'Pan-STARRS1 via STScI'
+                ? 'DSS2 Color via CDS hips2fits'
                 : 'James Webb Space Telescope (NASA/ESA/CSA) via ESA ESASky HiPS',
-            'caption': survey ? 'Pan-STARRS · 9′ field' : 'JWST NIRCam · 40% of the field imaged',
+            'caption': survey ? 'DSS2 Color · 9′ field' : 'JWST NIRCam · 40% of the field imaged',
             'fov': 0.2,
             'image_jpeg_base64': base64Encode(jpeg),
           }),
@@ -297,29 +375,32 @@ void main() {
         backend.requests.lastWhere((r) => r.path == '/landmark-detail').queryParameters;
     expect(lastDetailQuery(), {'id': 'NGC1976', 'view': 'auto', 'provider': 'dss2_color'});
 
-    // Point-of-view chips: Best, Webb, Hubble + one per survey from /providers.
+    // Only verified detail-capable views appear: Webb, Hubble, DSS2 Color (never field-only Mellinger).
     await tester.drag(find.byType(ListView).first, const Offset(0, 800)); // back to top
     await tester.pump();
-    for (final label in ['Best', 'Webb', 'Hubble', 'DSS2 Color', 'Pan-STARRS DR2 (STScI)']) {
+    for (final label in ['Webb', 'Hubble', 'DSS2 Color']) {
       expect(find.widgetWithText(ChoiceChip, label), findsOneWidget, reason: label);
     }
-    final panstarrs = find.widgetWithText(ChoiceChip, 'Pan-STARRS DR2 (STScI)');
-    await tester.ensureVisible(panstarrs); // chip row scrolls horizontally
+    expect(find.widgetWithText(ChoiceChip, 'Mellinger Color'), findsNothing);
+    expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Webb')).selected, isTrue);
+
+    final dssChip = find.widgetWithText(ChoiceChip, 'DSS2 Color');
+    await tester.ensureVisible(dssChip);
     await tester.pumpAndSettle();
-    await tester.tap(panstarrs);
-    expect(tester.widget<ChoiceChip>(panstarrs).selected, isFalse); // not until rebuilt
+    await tester.tap(dssChip);
+    expect(tester.widget<ChoiceChip>(dssChip).selected, isFalse); // not until rebuilt
     await tester.pump();
-    expect(tester.widget<ChoiceChip>(panstarrs).selected, isTrue);
+    expect(tester.widget<ChoiceChip>(dssChip).selected, isTrue);
     // Dio dispatches on a timer (fake clock) and decodes on the real event loop: drive both.
     for (var i = 0; i < 30 && find.byType(InteractiveViewer).evaluate().isEmpty; i++) {
       await tester.pump(const Duration(milliseconds: 50));
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
     }
-    expect(lastDetailQuery(), {'id': 'NGC1976', 'view': 'survey', 'provider': 'panstarrs'});
+    expect(lastDetailQuery(), {'id': 'NGC1976', 'view': 'survey', 'provider': 'dss2_color'});
     await tester.drag(find.byType(ListView).first, const Offset(0, -600)); // credit is below
     await tester.pump();
     expect(find.text('Survey close-up'), findsOneWidget);
-    expect(find.textContaining('Pan-STARRS1 via STScI'), findsOneWidget);
+    expect(find.textContaining('DSS2 Color via CDS hips2fits'), findsOneWidget);
 
     // Back on the result screen, markers can be hidden.
     await tester.pageBack();
@@ -327,6 +408,100 @@ void main() {
     await tester.tap(find.byTooltip('Hide landmarks'));
     await tester.pump();
     expect(find.byType(LandmarkMarker), findsNothing);
+  });
+
+  testWidgets('detail screen hides Webb when unavailable and goes straight to DSS2 for stars',
+      (tester) async {
+    final jpeg = Uint8List.fromList(img.encodeJpg(img.Image(width: 8, height: 8)));
+    const hubbleOnlyDso = Landmark(
+      id: 'NGC6205',
+      name: 'Hercules Cluster',
+      kind: 'dso',
+      typeLabel: 'Globular cluster',
+      x: 0.5,
+      y: 0.5,
+      hasHires: true,
+    );
+    const star = Landmark(
+      id: 'HIP91262',
+      name: 'Vega',
+      kind: 'star',
+      typeLabel: 'Star',
+      x: 0.3,
+      y: 0.3,
+      hasHires: false,
+    );
+
+    final backend = FakeBackend()..json('GET /api/providers', providersJson);
+    backend.handlers['GET /api/landmark-detail'] = (o) {
+      final id = o.queryParameters['id'];
+      final isStar = id == 'HIP91262';
+      return ResponseBody.fromString(
+        jsonEncode({
+          'landmark': {},
+          'view': o.queryParameters['view'],
+          'image_source': isStar ? 'survey' : 'hst',
+          'available_views': isStar ? ['survey'] : ['hst', 'survey'],
+          'credit': isStar ? 'DSS2' : 'Hubble Space Telescope',
+          'caption': '',
+          'fov': 0.2,
+          'image_jpeg_base64': base64Encode(jpeg),
+        }),
+        200,
+        headers: {
+          Headers.contentTypeHeader: ['application/json'],
+        },
+      );
+    };
+
+    final container = ProviderContainer(overrides: [
+      apiClientProvider.overrideWithValue(ApiClient('http://test', dio: fakeDio(backend))),
+    ]);
+    addTearDown(container.dispose);
+
+    // 1. DSO with Hubble only, opened from a Mellinger field view:
+    //    Webb and Mellinger never appear; Hubble is selected with zero duplicate fetch.
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(
+        home: LandmarkDetailScreen(landmark: hubbleOnlyDso, providerKey: 'skyview_mellinger'),
+      ),
+    ));
+    for (var i = 0; i < 15; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 15)));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+
+    expect(find.widgetWithText(ChoiceChip, 'Webb'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Mellinger Color'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Hubble'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'DSS2 Color'), findsOneWidget);
+    expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Hubble')).selected, isTrue);
+    expect(
+      backend.requests.where((r) => r.path == '/landmark-detail').length,
+      1,
+      reason: 'Resolving auto -> Hubble should reuse cached image without re-downloading',
+    );
+
+    // 2. Star: goes straight to view=survey&provider=dss2_color without probing telescopes.
+    backend.requests.clear();
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(
+        home: LandmarkDetailScreen(landmark: star, providerKey: 'skyview_mellinger'),
+      ),
+    ));
+    for (var i = 0; i < 10; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 15)));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+
+    expect(find.widgetWithText(ChoiceChip, 'Webb'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Hubble'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'DSS2 Color'), findsOneWidget);
+    final starQuery =
+        backend.requests.singleWhere((r) => r.path == '/landmark-detail').queryParameters;
+    expect(starQuery, {'id': 'HIP91262', 'view': 'survey', 'provider': 'dss2_color'});
   });
 
   testWidgets('magic reveal plays when a new image arrives, then gets out of the way',
@@ -439,5 +614,108 @@ void main() {
     expect(find.text('Too cloudy.'), findsOneWidget);
     expect(find.text('Take another'), findsOneWidget);
     expect(find.text('Retry'), findsNothing);
+  });
+
+  testWidgets('CameraScreen, ResultScreen and LandmarkDetailScreen fit 800x360 landscape cleanly',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 360);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    const sensorEventChannel = MethodChannel('night_sky/sensor_events');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      sensorEventChannel,
+      (call) async => null,
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        sensorEventChannel,
+        null,
+      ),
+    );
+
+    final landscapePng = Uint8List.fromList(img.encodePng(img.Image(width: 64, height: 48)));
+    final backend = FakeBackend()
+      ..json('POST /api/solve', solveJson)
+      ..image('POST /api/sky-image', landscapePng, {'X-Provider': 'dss2_color', 'X-Credit': 'DSS2'})
+      ..json('GET /api/landmarks', landmarksJson())
+      ..json('GET /api/providers', providersJson);
+
+    final container = ProviderContainer(overrides: [
+      apiClientProvider.overrideWithValue(ApiClient('http://test', dio: fakeDio(backend))),
+    ]);
+    addTearDown(container.dispose);
+
+    // 1. CameraScreen in 800x360 landscape with 1.3x text scale: right-side shutter, zero overflow.
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.3)),
+            child: child!,
+          ),
+          home: const CameraScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(tester.takeException(), isNull);
+    final shutterRect = tester.getRect(find.byKey(const Key('shutter')));
+    expect(shutterRect.center.dx, greaterThan(600)); // ergonomic right-hand shutter rail
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+
+    // 2. ResultScreen in 800x360 landscape (both solved and error states): zero overflow.
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.3)),
+            child: child!,
+          ),
+          home: const ResultScreen(),
+        ),
+      ),
+    );
+    await tester.runAsync(
+      () => container
+          .read(sessionProvider.notifier)
+          .start(landscapePng, CaptureMetadata(timestampUtc: DateTime.utc(2026))),
+    );
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('compare-slider')), findsOneWidget);
+
+    // Also check solve failure ErrorMessage on short 360dp landscape height.
+    backend.json(
+      'POST /api/solve',
+      {'error': {'code': 'SOLVE_FAILED', 'message': 'Too cloudy.'}},
+      status: 422,
+    );
+    await tester.runAsync(
+      () => container
+          .read(sessionProvider.notifier)
+          .start(landscapePng, CaptureMetadata(timestampUtc: DateTime.utc(2026))),
+    );
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Take another'), findsOneWidget);
+
+    // 3. LandmarkDetailScreen in 800x360 landscape: compact image stage, zero overflow.
+    final lm = Landmark.fromJson((landmarksJson()['landmarks'] as List).first);
+    backend.hang('GET /api/landmark-detail');
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(home: LandmarkDetailScreen(landmark: lm)),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 20));
   });
 }

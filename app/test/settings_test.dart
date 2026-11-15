@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sky/main.dart';
@@ -17,13 +18,15 @@ ProviderContainer _container(MemorySettingsStore store) {
 
 void main() {
   group('AppSettings', () {
-    test('defaults: gyroscope off', () {
+    test('defaults: gyroscope off, horizon shading on', () {
       const s = AppSettings();
       expect(s.useGyroscope, isFalse);
       expect(s.smoothing, SensorSmoothing.medium);
       expect(s.steadiness, Steadiness.normal);
+      expect(s.orientationMode, ScreenOrientationMode.auto);
       expect(s.fontSize, FontSize.normal);
       expect(s.autoCapture, isFalse);
+      expect(s.horizonShading, isTrue);
     });
 
     test('JSON round trip; unknown or missing values fall back to defaults', () {
@@ -33,6 +36,8 @@ void main() {
           steadiness: Steadiness.strict,
           autoCapture: true,
           showPointingReadout: false,
+          orientationMode: ScreenOrientationMode.landscape,
+          horizonShading: false,
           fontSize: FontSize.extraLarge);
       expect(AppSettings.fromJson(jsonDecode(jsonEncode(s.toJson()))), s);
       expect(AppSettings.fromJson({'smoothing': 'turbo', 'useGyroscope': 'yes'}),
@@ -87,12 +92,25 @@ void main() {
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'High'));
     await tester.tap(find.widgetWithText(ChoiceChip, 'Strict'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Landscape'));
     await tester.tap(find.widgetWithText(ChoiceChip, 'Large'));
     await tester.tap(find.byKey(const Key('setting-auto-capture')));
+    final horizonShadingTile = find.byKey(const Key('setting-horizon-shading'));
+    expect(tester.widget<SwitchListTile>(horizonShadingTile).value, isTrue);
+    await tester.tap(horizonShadingTile);
     await tester.pump();
     final s = c.read(settingsProvider);
-    expect((s.smoothing, s.steadiness, s.fontSize, s.autoCapture),
-        (SensorSmoothing.high, Steadiness.strict, FontSize.large, true));
+    expect(
+      (s.smoothing, s.steadiness, s.orientationMode, s.fontSize, s.autoCapture, s.horizonShading),
+      (
+        SensorSmoothing.high,
+        Steadiness.strict,
+        ScreenOrientationMode.landscape,
+        FontSize.large,
+        true,
+        false,
+      ),
+    );
     expect(find.textContaining('0.7°'), findsOneWidget); // strict threshold explained
     expect(AppSettings.fromJson(jsonDecode(store.value!)), s); // saved
 
@@ -115,6 +133,62 @@ void main() {
     c.read(settingsProvider.notifier).update((s) => s.copyWith(fontSize: FontSize.extraLarge));
     await tester.pump();
     expect(scale, closeTo(1.3, 1e-9));
+  });
+
+  testWidgets('screen orientation setting updates SystemChrome preferred orientations',
+      (tester) async {
+    final calls = <List<String>>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'SystemChrome.setPreferredOrientations') {
+          calls.add([for (final v in call.arguments as List<dynamic>) v as String]);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    final c = _container(MemorySettingsStore());
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: c,
+        child: const NightSkyAppShell(home: SizedBox()),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      calls.last,
+      containsAll(<String>[
+        'DeviceOrientation.portraitUp',
+        'DeviceOrientation.landscapeLeft',
+        'DeviceOrientation.landscapeRight',
+      ]),
+    );
+
+    c.read(settingsProvider.notifier).update(
+          (s) => s.copyWith(orientationMode: ScreenOrientationMode.landscape),
+        );
+    await tester.pump();
+    expect(
+      calls.last,
+      equals(<String>[
+        'DeviceOrientation.landscapeLeft',
+        'DeviceOrientation.landscapeRight',
+      ]),
+    );
+
+    c.read(settingsProvider.notifier).update(
+          (s) => s.copyWith(orientationMode: ScreenOrientationMode.portrait),
+        );
+    await tester.pump();
+    expect(calls.last, equals(<String>['DeviceOrientation.portraitUp']));
   });
 
   testWidgets('steadiness threshold, auto-capture countdown and pointing readout',

@@ -44,7 +44,9 @@ MISSIONS = {
 MISSION_NAMES = {"jwst": "James Webb Space Telescope", "hst": "Hubble Space Telescope"}
 # Tint of the added detail: warm for JWST's infrared, cool blue-white for Hubble.
 TINTS = {"jwst": (1.25, 0.95, 0.7), "hst": (0.9, 1.0, 1.2)}
-MIN_COVERAGE = 0.02        # less than 2 % of the field imaged = not worth showing
+MIN_COVERAGE = 0.12        # less than 12 % of the framed field imaged = mostly survey, reject
+MIN_CORE_PIXELS = 8        # minimum probe pixels covering the target's central region
+MIN_CORE_FRACTION = 0.05   # minimum imaged fraction of the target's core disc
 
 
 @dataclass
@@ -148,23 +150,56 @@ def frame_field(mask: np.ndarray, ra: float, dec: float, fov_deg: float,
     return float(new_ra) % 360, float(new_dec), fov
 
 
-def locate(mission: str, ra: float, dec: float, search_fov: float, min_fov: float):
+def covers_target(mask: np.ndarray, search_fov: float,
+                  target_fov: float | None = None) -> bool:
+    """True when the mission actually imaged the target at the field centre, not just a stray
+    parallel pointing off to the side."""
+    n = mask.shape[0]
+    tfov = target_fov if target_fov is not None else search_fov * 0.5
+    core_r = max(8, min(n // 3, round((tfov / max(search_fov, 1e-6)) * (n / 2) * 0.6)))
+    yy, xx = np.ogrid[:n, :n]
+    core = (xx - n // 2) ** 2 + (yy - n // 2) ** 2 <= core_r ** 2
+    hits = int(mask[core].sum())
+    return hits >= MIN_CORE_PIXELS and hits / max(int(core.sum()), 1) >= MIN_CORE_FRACTION
+
+
+def framed_coverage(mask: np.ndarray, ra: float, dec: float, search_fov: float,
+                    framed: tuple[float, float, float]) -> float:
+    """Imaged fraction of the framed sub-box inside the low-res probe mask."""
+    n = mask.shape[0]
+    new_ra, new_dec, framed_fov = framed
+    wcs = output_wcs(ra, dec, search_fov, 0.0, n, n)
+    fx, fy_fits = wcs.wcs_world2pix([[new_ra, new_dec]], 0)[0]
+    fy = n - 1 - fy_fits
+    half = max(2.0, (framed_fov / max(search_fov, 1e-6)) * n / 2)
+    x0, x1 = max(0, int(round(fx - half))), min(n, int(round(fx + half)))
+    y0, y1 = max(0, int(round(fy - half))), min(n, int(round(fy + half)))
+    sub = mask[y0:y1, x0:x1]
+    return float(sub.mean()) if sub.size else 0.0
+
+
+def locate(mission: str, ra: float, dec: float, search_fov: float, min_fov: float,
+           target_fov: float | None = None):
     """Quick low-res look at where the mission has data around the object.
 
-    Returns (ra, dec, fov) framing all those frames, or None if there are none."""
+    Returns (ra, dec, fov) framing all those frames when they genuinely cover the target, or
+    None when the mission did not image the object (or only grazed a tiny sliver)."""
     probe = 192
     found = _sample_layers(mission, ra, dec, search_fov, probe)
     if not found:
         return None
     mask = np.logical_or.reduce([m for _, m, _ in found])
-    if mask.sum() < 4:                     # a few stray pixels: no real coverage
+    if not covers_target(mask, search_fov, target_fov):
         return None
-    return frame_field(mask, ra, dec, search_fov, min_fov, search_fov)
+    framed = frame_field(mask, ra, dec, search_fov, min_fov, search_fov)
+    if framed is None or framed_coverage(mask, ra, dec, search_fov, framed) < MIN_COVERAGE:
+        return None
+    return framed
 
 
 def render(mission: str, ra: float, dec: float, fov_deg: float, size_px: int,
            background: bytes | None) -> Mosaic | None:
-    """Colour mosaic for 'jwst' or 'hst', or None if the mission barely covers the field."""
+    """Colour mosaic for 'jwst' or 'hst', or None if the mission lacks real coverage."""
     found = _sample_layers(mission, ra, dec, fov_deg, size_px)
     if not found:
         return None
@@ -173,7 +208,7 @@ def render(mission: str, ra: float, dec: float, fov_deg: float, size_px: int,
         bg = np.asarray(open_image(background).convert("RGB")
                         .resize((size_px, size_px)))
     image, coverage = compose(found, bg, (size_px, size_px), TINTS[mission])
-    if coverage < MIN_COVERAGE:
+    if coverage < MIN_COVERAGE or (bg is not None and np.array_equal(image, bg)):
         return None
     buf = io.BytesIO()
     Image.fromarray(image).save(buf, "JPEG", quality=90)

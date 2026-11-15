@@ -58,7 +58,8 @@ def _fetch(provider: ImageProvider, ra, dec, fov, rotation, width, height) -> by
 
 
 def get_sky_image(ra: float, dec: float, fov: float, rotation: float = 0.0,
-                  provider_key: str | None = None, width: int = 1200, height: int = 1600) -> SkyImage:
+                  provider_key: str | None = None, width: int = 1200, height: int = 1600,
+                  allow_fallback: bool = True) -> SkyImage:
     requested = get_provider(provider_key)
     if requested is None:
         raise ApiError("INVALID_REQUEST", f"Unknown provider {provider_key!r}.")
@@ -74,7 +75,12 @@ def get_sky_image(ra: float, dec: float, fov: float, rotation: float = 0.0,
             message = f"{requested.name} is unavailable right now"
     else:
         reason = NO_COVERAGE
-        message = f"{requested.name} does not cover this area ({requested.coverage})"
+        message = f"{requested.name} does not cover this field ({requested.coverage})"
+
+    if not allow_fallback:
+        if reason == NO_COVERAGE:
+            raise ApiError(NO_COVERAGE, f"{message}.", 404)
+        raise ApiError(PROVIDER_UNAVAILABLE, f"{message}. Please try again later.", 503)
 
     candidates = fallback_candidates(ra, dec, fov, exclude=requested,
                                      service_failed=reason == PROVIDER_UNAVAILABLE)

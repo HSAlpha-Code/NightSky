@@ -20,15 +20,23 @@ class SkyViewProvider(ImageProvider):
     service = "skyview"
 
     def __init__(self, key: str, surveys: list[str], name: str, description: str,
-                 wavelength: str, scaling: str = "Log"):
+                 wavelength: str, scaling: str = "Log", coverage: str = "all-sky",
+                 min_fov_deg: float | None = None, supports_detail: bool = True):
         self.key = key
         self.surveys = surveys          # one survey = greyscale, three = R,G,B composite
         self.name = name
         self.description = description
         self.wavelength = wavelength
         self.scaling = scaling
-        self.coverage = "all-sky"
+        self.coverage = coverage
+        self.min_fov_deg = min_fov_deg
+        self.supports_detail = supports_detail
         self.credit = f"{name} via NASA SkyView (HEASARC/GSFC)"
+
+    def supports(self, ra: float, dec: float, fov_deg: float | None = None) -> bool:
+        if self.min_fov_deg is not None and fov_deg is not None and fov_deg < self.min_fov_deg:
+            return False
+        return True
 
     def fetch_cutout(self, ra, dec, fov_deg, rotation_deg, width_px, height_px) -> bytes:
         rgb = len(self.surveys) == 3

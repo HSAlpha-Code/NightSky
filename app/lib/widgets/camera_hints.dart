@@ -83,27 +83,25 @@ class SteadyIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     final steady = shakeDeg <= maxShakeDeg;
     final progress = autoCaptureProgress;
-    return Center(
-      child: Glass(
-        borderRadius: const BorderRadius.all(Radius.circular(999)),
-        padding: const EdgeInsets.fromLTRB(10, 7, 14, 7),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (steady && progress != null)
-            SizedBox.square(
-              dimension: 18,
-              child: CircularProgressIndicator(
-                  value: progress, strokeWidth: 2.5, color: Colors.greenAccent),
-            )
-          else
-            Icon(steady ? Icons.check_circle : Icons.pan_tool_alt_outlined,
-                color: steady ? Colors.greenAccent : Colors.amber, size: 18),
-          const SizedBox(width: 8),
-          Text(
-            steady ? (progress != null ? 'Steady, taking photo…' : 'Steady') : 'Hold steady…',
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Colors.white),
-          ),
-        ]),
-      ),
+    return Glass(
+      borderRadius: const BorderRadius.all(Radius.circular(999)),
+      padding: const EdgeInsets.fromLTRB(10, 7, 14, 7),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (steady && progress != null)
+          SizedBox.square(
+            dimension: 18,
+            child: CircularProgressIndicator(
+                value: progress, strokeWidth: 2.5, color: Colors.greenAccent),
+          )
+        else
+          Icon(steady ? Icons.check_circle : Icons.pan_tool_alt_outlined,
+              color: steady ? Colors.greenAccent : Colors.amber, size: 18),
+        const SizedBox(width: 8),
+        Text(
+          steady ? (progress != null ? 'Steady, taking photo…' : 'Steady') : 'Hold steady…',
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Colors.white),
+        ),
+      ]),
     );
   }
 }
@@ -131,19 +129,17 @@ class PointingReadout extends StatelessWidget {
   Widget build(BuildContext context) {
     final below = altitudeDeg < 0;
     final alt = '${altitudeDeg >= 0 ? '+' : '−'}${altitudeDeg.abs().round()}°';
-    return Center(
-      child: Glass(
-        borderRadius: const BorderRadius.all(Radius.circular(999)),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        child: Text(
-          'Alt $alt${below ? ' (below horizon)' : ''} · '
-          '${compassPoint(azimuthDeg)} ${azimuthDeg.round() % 360}° · '
-          '${usingGyroscope ? 'gyro' : 'compass'}',
-          key: const Key('pointing-readout'),
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: below ? Colors.amber : Colors.white,
-              fontFeatures: const [FontFeature.tabularFigures()]),
-        ),
+    return Glass(
+      borderRadius: const BorderRadius.all(Radius.circular(999)),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      child: Text(
+        'Alt $alt${below ? ' (below horizon)' : ''} · '
+        '${compassPoint(azimuthDeg)} ${azimuthDeg.round() % 360}° · '
+        '${usingGyroscope ? 'gyro' : 'compass'}',
+        key: const Key('pointing-readout'),
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: below ? Colors.amber : Colors.white,
+            fontFeatures: const [FontFeature.tabularFigures()]),
       ),
     );
   }

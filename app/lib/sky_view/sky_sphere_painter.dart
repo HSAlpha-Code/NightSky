@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -16,6 +17,7 @@ class SkySpherePainter extends CustomPainter {
     this.sunAltitudeDeg = -30.0,
     this.showMilkyWay = true,
     this.showHorizon = true,
+    this.horizonShading = true,
     this.nightVision = false,
     this.exposure = 1.12,
     this.overlayPaint,
@@ -27,6 +29,7 @@ class SkySpherePainter extends CustomPainter {
   final double sunAltitudeDeg;
   final bool showMilkyWay;
   final bool showHorizon;
+  final bool horizonShading;
   final bool nightVision;
   final double exposure;
 
@@ -81,7 +84,7 @@ class SkySpherePainter extends CustomPainter {
     var i = 0;
     shader.setFloat(i++, size.width);
     shader.setFloat(i++, size.height);
-    shader.setFloat(i++, camera.tanHalfFov);
+    shader.setFloat(i++, camera.horizontalTanHalfFov(size));
 
     shader.setFloat(i++, camera.forwardGal.x);
     shader.setFloat(i++, camera.forwardGal.y);
@@ -103,6 +106,7 @@ class SkySpherePainter extends CustomPainter {
     shader.setFloat(i++, exposure);
     shader.setFloat(i++, nightVision ? 1.0 : 0.0);
     shader.setFloat(i++, pano.hemisphereSize.toDouble());
+    shader.setFloat(i++, horizonShading ? 1.0 : 0.0);
 
     shader.setImageSampler(0, pano.east);
     shader.setImageSampler(1, pano.west);
@@ -124,6 +128,7 @@ class SkySpherePainter extends CustomPainter {
     final gridY = Float32List((cols + 1) * (rows + 1));
 
     final aspect = size.height / size.width;
+    final tanX = camera.horizontalTanHalfFov(size);
     for (var r = 0; r <= rows; r++) {
       final fy = r / rows;
       final ny = (0.5 - fy) * 2.0 * aspect;
@@ -133,8 +138,8 @@ class SkySpherePainter extends CustomPainter {
         final nx = fx * 2.0 - 1.0;
         final sx = fx * size.width;
         final dir = (camera.forwardGal +
-                camera.rightGal * (nx * camera.tanHalfFov) +
-                camera.upGal * (ny * camera.tanHalfFov))
+                camera.rightGal * (nx * tanX) +
+                camera.upGal * (ny * tanX))
             .normalized;
         final uv = galacticVecToPanoramaUv(dir);
         final idx = r * (cols + 1) + c;
@@ -222,6 +227,13 @@ class SkySpherePainter extends CustomPainter {
 
   void _paintProceduralGradient(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
+    if (!horizonShading) {
+      canvas.drawRect(
+        rect,
+        Paint()..color = nightVision ? const Color(0xFF100202) : const Color(0xFF080E1E),
+      );
+      return;
+    }
     final top = nightVision ? const Color(0xFF1A0303) : const Color(0xFF060B19);
     final bottom = nightVision ? const Color(0xFF0A0101) : const Color(0xFF0E1A30);
     canvas.drawRect(
@@ -246,6 +258,7 @@ class SkySpherePainter extends CustomPainter {
     final path = Path();
     var penDown = false;
     Offset? prev;
+    final maxSpan = math.max(size.width, size.height);
     for (var i = 0; i <= steps; i++) {
       final az = (i / steps) * 360.0;
       final pt = camera.projectEnu(altAzToEnu(0.0, az), size);
@@ -254,7 +267,7 @@ class SkySpherePainter extends CustomPainter {
           pt.dx <= size.width * 1.5 &&
           pt.dy >= -size.height * 0.5 &&
           pt.dy <= size.height * 1.5) {
-        if (!penDown || (prev != null && (pt - prev).distance > size.width * 0.6)) {
+        if (!penDown || (prev != null && (pt - prev).distance > maxSpan * 0.6)) {
           path.moveTo(pt.dx, pt.dy);
           penDown = true;
         } else {
@@ -324,6 +337,7 @@ class SkySpherePainter extends CustomPainter {
       old.sunAltitudeDeg != sunAltitudeDeg ||
       old.showMilkyWay != showMilkyWay ||
       old.showHorizon != showHorizon ||
+      old.horizonShading != horizonShading ||
       old.nightVision != nightVision ||
       old.exposure != exposure ||
       old.overlayPaint != overlayPaint;

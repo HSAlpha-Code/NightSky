@@ -30,6 +30,7 @@ def landmark_detail_view(request):
         "landmark": detail.landmark,
         "view": detail.view,
         "image_source": detail.image_source,
+        "available_views": detail.available_views,
         "credit": detail.credit,
         "caption": detail.caption,
         "fov": detail.fov_deg,

@@ -53,13 +53,8 @@ Highlights, or a close-up from Hubble, JWST or any survey.
 ### Image sources
 | Key | Source | Coverage |
 |---|---|---|
-| `dss2_color` (default) | DSS2 colour, CDS hips2fits | All-sky |
-| `2mass_color` | 2MASS near-infrared | All-sky |
-| `allwise_color` | AllWISE mid-infrared | All-sky |
-| `skyview_mellinger` | Mellinger colour mosaic, NASA SkyView | All-sky, best for wide fields |
-| `skyview_dss2_red` | DSS2 red, NASA SkyView | All-sky |
-| `panstarrs_hips` | Pan-STARRS DR1, hips2fits | Dec > −30° |
-| `panstarrs` | Pan-STARRS cutouts, STScI | Dec > −30°, fields ≤ 0.4° |
+| `dss2_color` (default) | DSS2 colour, CDS hips2fits + ESA mirror | All-sky (field & close-ups) |
+| `skyview_mellinger` | Mellinger colour mosaic, NASA SkyView | All-sky (wide fields ≥ 5°) |
 
 To add a source, subclass `ImageProvider` in `backend/providers/` (see `base.py`), then add one
 line to `PROVIDERS` in `providers/registry.py`. The app builds its pickers from `GET /api/providers`.
