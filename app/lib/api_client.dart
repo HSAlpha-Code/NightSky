@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
 import 'models.dart';
+import 'image_disk_cache.dart';
 
 /// Answer to a conditional GET: [json] is null when the server said 304 (unchanged).
 class ConditionalJson {
@@ -15,8 +16,10 @@ class ConditionalJson {
 
 /// Thin client for the Django backend.
 class ApiClient {
-  ApiClient(String baseUrl, {Dio? dio})
-      : _dio = dio ??
+  ApiClient(String baseUrl, {Dio? dio, ImageDiskCache? imageCache})
+      : _cache = imageCache ?? ImageDiskCache.shared,
+        _server = normaliseBaseUrl(baseUrl),
+        _dio = dio ??
             Dio(BaseOptions(
               baseUrl: normaliseBaseUrl(baseUrl),
               connectTimeout: const Duration(seconds: 10),
@@ -26,6 +29,8 @@ class ApiClient {
             ));
 
   final Dio _dio;
+  final ImageDiskCache _cache;
+  final String _server;
 
   /// "http://host:8000", ".../", ".../api" and ".../api/" all become "http://host:8000/api".
   static String normaliseBaseUrl(String url) {
@@ -105,6 +110,15 @@ class ApiClient {
   Future<LandmarkDetail> landmarkDetail(String id,
           {String? providerKey, String view = 'auto', CancelToken? cancelToken}) =>
       _guard(() async {
+        final key = jsonEncode(['detail-v1', _server, id, view, providerKey]);
+        final cached = await _cache.read(key);
+        if (cached != null) {
+          try {
+            return _decodeDetail(jsonDecode(utf8.decode(cached)) as Map<String, dynamic>);
+          } catch (_) {
+            await _cache.remove(key);
+          }
+        }
         final resp = await _dio.get<Map<String, dynamic>>(
           '/landmark-detail',
           queryParameters: {
@@ -117,15 +131,26 @@ class ApiClient {
           cancelToken: cancelToken,
         );
         final j = resp.data!;
-        return LandmarkDetail(
-          image: base64Decode(j['image_jpeg_base64'] as String),
-          imageSource: (j['image_source'] ?? '') as String,
-          credit: (j['credit'] ?? '') as String,
-          caption: (j['caption'] ?? '') as String,
-          fovDeg: (j['fov'] as num?)?.toDouble(),
-          availableViews: (j['available_views'] as List?)?.map((e) => e as String).toList(),
-        );
+        final detail = _decodeDetail(j);
+        await _cache.write(key, utf8.encode(jsonEncode(j)));
+        // Reuse auto's result when the screen switches to its resolved source.
+        if (view == 'auto') {
+          await _cache.write(
+            jsonEncode(['detail-v1', _server, id, detail.imageSource, providerKey]),
+            utf8.encode(jsonEncode(j)),
+          );
+        }
+        return detail;
       });
+
+  LandmarkDetail _decodeDetail(Map<String, dynamic> j) => LandmarkDetail(
+        image: base64Decode(j['image_jpeg_base64'] as String),
+        imageSource: (j['image_source'] ?? '') as String,
+        credit: (j['credit'] ?? '') as String,
+        caption: (j['caption'] ?? '') as String,
+        fovDeg: (j['fov'] as num?)?.toDouble(),
+        availableViews: (j['available_views'] as List?)?.map((e) => e as String).toList(),
+      );
 
   /// `GET /api/curated/index/`: bodies that have curated highlights. Pass the stored [etag]
   /// to avoid downloading an unchanged index.

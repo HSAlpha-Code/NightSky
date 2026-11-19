@@ -1,0 +1,66 @@
+DRAFT - NOT APPROVED FOR PUBLIC RELEASE
+
+NightSky Privacy Policy
+Effective date: 2026-11-17
+Publisher: Hemant Sharma (India)
+Privacy and support contact: hemantsharma.devs@gmail.com
+Public policy: https://nightsky-backend.vercel.app/privacy/
+
+Camera mode and online requests
+When you agree to use camera uploads, NightSky sends your captured sky photograph,
+capture time, camera field of view, phone orientation and, when available and permitted,
+latitude, longitude and altitude to the server selected in Settings. These are used to
+identify the photographed sky and retrieve astronomical survey images. Auto-capture,
+if enabled, repeats this for each capture. Upload consent is requested again in a new
+app session, after revocation, or when the selected server changes.
+
+The server and hosting provider can receive your IP address and request metadata.
+The backend queries astronomical image/catalogue services (including CDS, NASA SkyView,
+ESA ESASky and MAST) using sky coordinates and image parameters. NightSky's solver
+processes your photograph on the selected backend; it does not send the photograph
+to those survey services. Opening source links launches an external website whose
+own privacy policy applies. Custom servers are operated by their respective owners;
+contact that operator for its retention practices before sending data there.
+
+Sky View and device storage
+The bundled star map and astronomical calculations work on the device. Sky View uses
+location, when permitted, and orientation sensors to position the sky. A manually
+chosen or last available location and app preferences can be stored locally. Online
+object details and curated highlights require requests to the selected server; the
+curated index is also requested when the app starts. Downloaded astronomical images
+are cached locally (up to approximately 100 MB); the operating system may clear them.
+Captured photographs and metadata are kept in the active in-memory result session.
+NightSky attempts to remove the camera's temporary capture after reading it. The
+result session is cleared when you leave the result screen. This is not a guarantee
+that operating-system or hosting infrastructure never creates temporary copies.
+
+Retention, hosting and deletion
+Hosting provider: Vercel
+Hosting/processing regions: [RELEASE INPUT REQUIRED: hosting_regions]
+Uploaded photographs/metadata retention: The application processes photographs and capture metadata to answer the request and does not deliberately write them to persistent application storage. Django can buffer uploads to temporary files, which are closed/removed when the request ends. Hosting, reverse-proxy and diagnostic retention must be verified separately before publication.
+Hosting, security and request-log retention: [RELEASE INPUT REQUIRED: hosting_log_retention]
+Deletion/request process: Contact hemantsharma.devs@gmail.com for privacy and deletion requests. Describe the request and approximate capture time; do not send another photograph or identity documents unless reasonably necessary. The publisher will assess which records actually exist and applicable rights. Clear Android app storage or uninstall to remove local preferences, saved location and cached images.
+Local preferences, saved location and caches can be removed through Android's app
+storage controls or by uninstalling. Location permission can be revoked in Android
+settings. Photo upload consent can be revoked in NightSky Settings; this stops future
+captures from uploading without asking again and does not undo an earlier request.
+
+Applicable legal bases, international processing and rights
+Legal bases for the described processing: [RELEASE INPUT REQUIRED: legal_bases]
+International processing and applicable safeguards: [RELEASE INPUT REQUIRED: international_processing_safeguards]
+Privacy rights, request process and complaints: [RELEASE INPUT REQUIRED: rights_and_complaints]
+
+Security and choices
+The default production server uses HTTPS. Android release builds block cleartext
+HTTP. Camera and foreground location access use Android runtime permissions; microphone
+and background location permissions are not requested. Location is optional: you can
+deny it or use a manual location in Sky View. You can decline a photo upload and use
+Sky View. Permissions and upload consent are separate choices.
+
+Audience: General audience; not specifically directed to children. Final Play Console age-group selection must be reviewed.
+Ads, purchases and accounts: The first release has no ads, paid features, in-app purchases, subscriptions or user accounts.
+Analytics and diagnostics: The first release includes no advertising or analytics SDKs. Server/hosting operational logs and diagnostics are described under retention.
+
+Changes and contact
+We update the effective date when this policy changes. Contact the publisher above
+for privacy questions and data requests. Applicable rights depend on where you live.

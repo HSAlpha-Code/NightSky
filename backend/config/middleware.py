@@ -1,4 +1,4 @@
-"""Extra security headers for the JSON/image API (nothing here renders HTML)."""
+"""Default security headers; public legal HTML explicitly permits its inline stylesheet."""
 
 
 class SecurityHeadersMiddleware:

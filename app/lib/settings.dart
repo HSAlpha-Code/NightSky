@@ -171,7 +171,6 @@ class AppSettings {
     this.orientationMode = ScreenOrientationMode.auto,
     this.fontSize = FontSize.normal,
     this.skyQuality = SkyQuality.balanced,
-    this.startInSkyView = false,
     this.nightVision = false,
     this.horizonShading = true,
     this.useManualLocation = false,
@@ -200,9 +199,6 @@ class AppSettings {
   /// Rendering quality for Sky View (Balanced by default).
   final SkyQuality skyQuality;
 
-  /// Open straight into Sky View on launch (avoids touching the camera on phones without one).
-  final bool startInSkyView;
-
   /// Red night-vision filter in Sky View to preserve dark adaptation.
   final bool nightVision;
 
@@ -230,7 +226,6 @@ class AppSettings {
     ScreenOrientationMode? orientationMode,
     FontSize? fontSize,
     SkyQuality? skyQuality,
-    bool? startInSkyView,
     bool? nightVision,
     bool? horizonShading,
     bool? useManualLocation,
@@ -250,7 +245,6 @@ class AppSettings {
         orientationMode: orientationMode ?? this.orientationMode,
         fontSize: fontSize ?? this.fontSize,
         skyQuality: skyQuality ?? this.skyQuality,
-        startInSkyView: startInSkyView ?? this.startInSkyView,
         nightVision: nightVision ?? this.nightVision,
         horizonShading: horizonShading ?? this.horizonShading,
         useManualLocation:
@@ -271,7 +265,6 @@ class AppSettings {
         'orientationMode': orientationMode.name,
         'fontSize': fontSize.name,
         'skyQuality': skyQuality.name,
-        'startInSkyView': startInSkyView,
         'nightVision': nightVision,
         'horizonShading': horizonShading,
         'useManualLocation': useManualLocation,
@@ -307,7 +300,6 @@ class AppSettings {
       orientationMode: pick(ScreenOrientationMode.values, j['orientationMode'], d.orientationMode),
       fontSize: pick(FontSize.values, j['fontSize'], d.fontSize),
       skyQuality: pick(SkyQuality.values, j['skyQuality'], d.skyQuality),
-      startInSkyView: flag('startInSkyView', d.startInSkyView),
       nightVision: flag('nightVision', d.nightVision),
       horizonShading: flag('horizonShading', d.horizonShading),
       useManualLocation: hasCoords && flag('useManualLocation', d.useManualLocation),
@@ -389,10 +381,11 @@ final settingsStoreProvider = Provider<SettingsStore>((ref) => ChannelSettingsSt
 
 class SettingsNotifier extends Notifier<AppSettings> {
   bool _changed = false;
+  late Future<void> restored;
 
   @override
   AppSettings build() {
-    unawaited(_restore());
+    restored = _restore();
     return const AppSettings();
   }
 
@@ -425,3 +418,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
 }
 
 final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(SettingsNotifier.new);
+
+/// Restore sensor and display preferences before mounting the camera screen.
+final settingsRestoredProvider = FutureProvider<void>((ref) {
+  return ref.watch(settingsProvider.notifier).restored;
+});

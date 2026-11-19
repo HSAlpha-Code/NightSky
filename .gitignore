@@ -7,6 +7,20 @@ backend/data/*
 !backend/data/catalogs/
 __pycache__/
 *.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+# Local environments and credentials; retain shareable configuration examples.
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+!.env.*.example
 app/build/
 app/.dart_tool/
 app/.flutter-plugins-dependencies
@@ -15,6 +29,9 @@ app/android/.gradle/
 # Android release signing (keep a private backup, never commit)
 app/android/key.properties
 app/android/*.jks
+app/android/*.keystore
+app/android/key.properties.*
+!app/android/key.properties.example
 backend/staticfiles/
 .vercel/
 .idea/
@@ -23,3 +40,20 @@ backend/staticfiles/
 local_tools/curator/media/
 local_tools/curator/*.sqlite3
 local_tools/curator/__pycache__/
+
+# SQLite temporary files and local database backups.
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+backend/db.sqlite3.*
+local_tools/curator/*.sqlite3.*
+
+# Keep release guides, rights registers and shipped legal documents tracked.
+# Store private permission correspondence/signing backups in these local folders.
+release/
+
+# Local logs and operating-system metadata.
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini

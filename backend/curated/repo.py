@@ -44,7 +44,9 @@ def record_from_model(h) -> dict:
     return {
         "id": h.id, "body_id": h.body_id, "body_name": h.body_name, "title": h.title,
         "image_file": h.image_file, "source_outlet": h.source_outlet,
-        "source_url": h.source_url, "credit": h.credit, "caption": h.caption,
+        "source_url": h.source_url, "source_link_text": h.source_link_text, "credit": h.credit, "caption": h.caption,
+        "license_name": h.license_name, "license_url": h.license_url,
+        "modifications": h.modifications,
         "ra": h.ra, "dec": h.dec, "sort_order": h.sort_order,
         "updated_at": h.updated_at.isoformat(),
     }

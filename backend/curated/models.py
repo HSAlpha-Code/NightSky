@@ -14,7 +14,13 @@ class CuratedHighlight(models.Model):
     image_file = models.CharField(max_length=200, help_text="File name inside the image folder.")
     source_outlet = models.CharField(max_length=100, blank=True, help_text="e.g. NASA, ESA, BBC")
     source_url = models.URLField(max_length=500, blank=True)
+    source_link_text = models.CharField(
+        max_length=200, blank=True,
+        help_text="Text shown for the source link in the app (default: the outlet name)")
     credit = models.CharField(max_length=300, blank=True, help_text="Credit / copyright note")
+    license_name = models.CharField(max_length=150, blank=True)
+    license_url = models.URLField(max_length=500, blank=True)
+    modifications = models.TextField(blank=True, help_text="Known changes to the source image")
     caption = models.TextField(blank=True)
     ra = models.FloatField(null=True, blank=True)
     dec = models.FloatField(null=True, blank=True)

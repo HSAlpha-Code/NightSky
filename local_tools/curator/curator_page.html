@@ -66,7 +66,8 @@ function card(h,i,all){
   return el('div',{class:'card'+(h.enabled?'':' off')},
     el('a',{href:h.image_url,target:'_blank'},el('img',{src:h.thumbnail_url})),
     el('div',{class:'fields'},field('title','Title','wide'),field('source_outlet','Outlet (NASA, ESA, BBC)'),field('credit','Credit / copyright'),
-      field('source_url','Source URL','wide'),field('caption','Caption','wide')),
+      field('source_url','Source URL','wide'),field('source_link_text','Link text (shown in the app)','wide'),field('license_name','Licence name'),field('license_url','Licence URL'),
+      field('modifications','Changes to source image','wide'),field('caption','Caption','wide')),
     el('div',{class:'actions'},el('label',{},en,' Enabled'),el('button',{onclick:save},'Save'),
       el('button',{onclick:()=>move(-1),disabled:i===0},'↑ Up'),el('button',{onclick:()=>move(1),disabled:i===all.length-1},'↓ Down'),
       el('button',{class:'danger',onclick:async()=>{if(confirm('Delete this image?')){await api('/api/highlights/'+h.id,{method:'DELETE'});await show();loadList();}}},'Delete')));
@@ -83,6 +84,9 @@ function addForm(){
     el('div',{class:'row'},file,url),
     el('div',{class:'row'},mk('title','Title'),mk('source_outlet','Outlet (NASA, ESA, BBC)')),
     el('div',{class:'row'},mk('credit','Credit / copyright (required)'),mk('source_url','Source URL')),
+    el('div',{class:'row'},mk('source_link_text','Link text shown in the app (e.g. Read the NASA article)')),
+    el('div',{class:'row'},mk('license_name','Licence name'),mk('license_url','Licence URL')),
+    el('div',{class:'row'},mk('modifications','Changes to source image')),
     el('div',{class:'row'},mk('caption','Caption')),
     el('button',{onclick:go},'Add image'));
 }

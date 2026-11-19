@@ -13,10 +13,19 @@ import '../widgets/curated_viewer.dart';
 /// concrete view (`'jwst'`, `'hst'`, or `'survey'`) never re-downloads the image.
 class ResolvedDetailCacheNotifier extends Notifier<Map<(String, DetailView), LandmarkDetail>> {
   @override
-  Map<(String, DetailView), LandmarkDetail> build() => const {};
+  Map<(String, DetailView), LandmarkDetail> build() {
+    ref.watch(serverUrlProvider);
+    return const {};
+  }
 
   void put(String landmarkId, DetailView view, LandmarkDetail detail) {
-    state = {...state, (landmarkId, view): detail};
+    final updated = {...state}..remove((landmarkId, view));
+    updated[(landmarkId, view)] = detail;
+    // Keep a small hot cache; the bounded disk cache handles older images.
+    while (updated.length > 12) {
+      updated.remove(updated.keys.first);
+    }
+    state = updated;
   }
 }
 
@@ -27,7 +36,10 @@ final resolvedDetailCacheProvider =
 /// Verified available views per landmark id (subset of `'jwst'`, `'hst'`, `'survey'`).
 class LandmarkAvailabilityNotifier extends Notifier<Map<String, Set<String>>> {
   @override
-  Map<String, Set<String>> build() => const {};
+  Map<String, Set<String>> build() {
+    ref.watch(serverUrlProvider);
+    return const {};
+  }
 
   void record(String landmarkId, Set<String> views) {
     state = {...state, landmarkId: Set.unmodifiable(views)};
@@ -50,16 +62,15 @@ final landmarkAvailabilityProvider =
 /// detail-capable sky survey), plus basic facts and credit.
 final landmarkDetailProvider = FutureProvider.autoDispose
     .family<LandmarkDetail, (String, DetailView)>((ref, args) async {
+  final api = ref.watch(apiClientProvider);
   final cached = ref.read(resolvedDetailCacheProvider)[args];
   if (cached != null) return cached;
 
   final (id, view) = args;
   final cancel = CancelToken();
   ref.onDispose(cancel.cancel); // switching view or leaving stops the download
-  return ref
-      .watch(apiClientProvider)
-      .landmarkDetail(id, providerKey: view.providerKey, view: view.view, cancelToken: cancel);
-});
+  return api.landmarkDetail(id, providerKey: view.providerKey, view: view.view, cancelToken: cancel);
+}, retry: (count, error) => null);
 
 /// Surveys with enough angular resolution for sub-degree star / DSO close-ups.
 List<SkyProviderInfo> detailSurveyProviders(ProviderCatalog? catalog) => [
@@ -352,7 +363,8 @@ class _LandmarkDetailScreenState extends ConsumerState<LandmarkDetailScreen> {
             _CuratedPanel(landmark: lm, showInfo: _showInfo)
           else if (detail != null)
             buildDetailStage(detail),
-          // Credit and facts stay out of the way until asked for.
+          if (credit != null) _ImageCredit(detail: credit),
+          // Additional facts can be hidden; source credits remain associated with the image.
           _DetailsToggle(expanded: _showInfo, onPressed: _toggleInfo),
           AnimatedSize(
             duration: const Duration(milliseconds: 250),
@@ -363,7 +375,6 @@ class _LandmarkDetailScreenState extends ConsumerState<LandmarkDetailScreen> {
                     key: const Key('landmark-details'),
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (credit != null) _ImageCredit(detail: credit),
                       LandmarkFacts(landmark: lm),
                     ],
                   )

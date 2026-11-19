@@ -31,6 +31,14 @@ class MainActivity : FlutterActivity() {
         val sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
 
+        MethodChannel(messenger, "night_sky/image_cache").setMethodCallHandler { call, result ->
+            if (call.method == "directory") {
+                result.success(java.io.File(cacheDir, "viewed_images_v1").absolutePath)
+            } else {
+                result.notImplemented()
+            }
+        }
+
         MethodChannel(messenger, "night_sky/sensors").setMethodCallHandler { call, result ->
             when (call.method) {
                 "available" -> {

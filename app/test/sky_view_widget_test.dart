@@ -1,12 +1,15 @@
+import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sky/api_client.dart';
 import 'package:night_sky/curated.dart';
+import 'package:night_sky/main.dart';
+import 'package:night_sky/screens/camera_screen.dart';
 import 'package:night_sky/screens/sky_view_screen.dart';
 import 'package:night_sky/sensors.dart';
 import 'package:night_sky/settings.dart';
@@ -25,6 +28,13 @@ import 'fake_backend.dart';
 class _NullPanoramaNotifier extends MellingerPanoramaNotifier {
   @override
   MellingerPanorama? build() => null;
+}
+
+class _DelayedSettingsStore extends MemorySettingsStore {
+  final loaded = Completer<String?>();
+
+  @override
+  Future<String?> load() => loaded.future;
 }
 
 void main() {
@@ -57,6 +67,29 @@ void main() {
     addTearDown(c.dispose);
     return c;
   }
+
+  testWidgets('startup ignores the retired sky preference', (tester) async {
+    const sensors = MethodChannel('night_sky/sensor_events');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(sensors, (_) async => null);
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(sensors, null));
+    final store = _DelayedSettingsStore();
+    final backend = FakeBackend()..json('GET /api/providers', providersJson);
+    final c = makeContainer(settingsStore: store, backend: backend);
+    await tester.pumpWidget(UncontrolledProviderScope(container: c, child: const NightSkyApp()));
+    await tester.pump();
+    expect(find.byType(CameraScreen), findsNothing);
+    store.loaded.complete('{"startInSkyView":true}');
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(CameraScreen), findsOneWidget);
+    expect(find.byType(SkyViewScreen), findsNothing);
+    for (var i = 0; i < 10; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
 
   testWidgets('graceful manual drag fallback, Mellinger credit, and pan updates pointing',
       (tester) async {
@@ -376,6 +409,40 @@ void main() {
     expect(modeSwitchRect.right, lessThanOrEqualTo(360));
     expect(settingsRect.left, greaterThanOrEqualTo(modeSwitchRect.right));
     expect(settingsRect.right, lessThanOrEqualTo(360));
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 20));
+  });
+
+  testWidgets('panorama fills the display through rotation while controls respect insets',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final c = makeContainer();
+    final sky = find.byWidgetPredicate((w) => w is CustomPaint && w.painter is SkySpherePainter);
+
+    for (final (size, padding) in [
+      (const Size(390, 844), const FakeViewPadding(top: 44, bottom: 30)),
+      (const Size(844, 390), const FakeViewPadding(left: 44, right: 20, bottom: 16)),
+    ]) {
+      tester.view.physicalSize = size;
+      tester.view.padding = padding;
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: c,
+        child: const MaterialApp(home: SkyViewScreen(initialManualMode: true)),
+      ));
+      await tester.pump();
+
+      expect(tester.getRect(sky), Offset.zero & size);
+      expect(tester.getRect(find.byKey(const Key('sky-view-canvas'))), Offset.zero & size);
+      final search = tester.getRect(find.byKey(const Key('sky-find-button')));
+      expect(search.left, greaterThanOrEqualTo(padding.left));
+      expect(search.top, greaterThanOrEqualTo(padding.top));
+      final settings = tester.getRect(find.byTooltip('Settings'));
+      expect(settings.right, lessThanOrEqualTo(size.width - padding.right));
+      final credit = tester.getRect(find.textContaining('FOV '));
+      expect(credit.bottom, lessThanOrEqualTo(size.height - padding.bottom));
+    }
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(milliseconds: 20));

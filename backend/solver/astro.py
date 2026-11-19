@@ -23,6 +23,12 @@ from .plate_solver import position_angle
 
 iers.conf.auto_download = settings.ASTROPY_IERS_AUTO_DOWNLOAD
 iers.conf.iers_degraded_accuracy = "warn"  # bundled tables are plenty for phone-sensor accuracy
+if not settings.ASTROPY_IERS_AUTO_DOWNLOAD:
+    # Offline deployments cannot refresh predictive Earth-orientation values. Astropy's
+    # default 30-day freshness check would otherwise stop sensor pointing entirely as
+    # the bundled table ages. Keep its degraded-accuracy warnings for this approximate
+    # phone-sensor hint; plate solving still refines the position from the photograph.
+    iers.conf.auto_max_age = None
 
 UP_OFFSET_RAD = 0.01  # small step along image-up used to measure the sky rotation
 

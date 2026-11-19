@@ -56,6 +56,10 @@ class CuratedHighlight {
     this.credit = '',
     this.sourceOutlet = '',
     this.sourceUrl = '',
+    this.sourceLinkText = '',
+    this.licenseName = '',
+    this.licenseUrl = '',
+    this.modifications = '',
   });
 
   final int id;
@@ -66,6 +70,12 @@ class CuratedHighlight {
   final String credit;
   final String sourceOutlet;
   final String sourceUrl;
+
+  /// Text of the source link; empty = use the outlet name.
+  final String sourceLinkText;
+  final String licenseName;
+  final String licenseUrl;
+  final String modifications;
 
   factory CuratedHighlight.fromJson(Map<String, dynamic> j) {
     String s(String k) => (j[k] ?? '') as String;
@@ -78,6 +88,10 @@ class CuratedHighlight {
       credit: s('credit'),
       sourceOutlet: s('source_outlet'),
       sourceUrl: s('source_url'),
+      sourceLinkText: s('source_link_text'),
+      licenseName: s('license_name'),
+      licenseUrl: s('license_url'),
+      modifications: s('modifications'),
     );
   }
 }

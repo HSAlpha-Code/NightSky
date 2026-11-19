@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../curated.dart';
+import '../cached_remote_image.dart';
 
 /// More images than this: show a "3 / 12" counter instead of one dot per image.
 const maxCuratedDots = 8;
@@ -26,7 +27,7 @@ class CuratedViewer extends StatefulWidget {
     this.showAttribution = true,
   });
 
-  /// Show the title, caption, credit and source of the current image below it.
+  /// Show the title/caption. Required credit, licence and source stay visible.
   final bool showAttribution;
 
   final List<CuratedHighlight> highlights;
@@ -69,7 +70,7 @@ class _CuratedViewerState extends State<CuratedViewer> {
   void _precacheAround(int page) {
     for (final i in [page - 1, page + 1]) {
       if (i < 0 || i >= _count) continue;
-      precacheImage(NetworkImage(widget.highlights[i].imageUrl), context, onError: (_, _) {});
+      precacheImage(CachedRemoteImage(widget.highlights[i].imageUrl), context, onError: (_, _) {});
     }
   }
 
@@ -122,9 +123,11 @@ class _CuratedViewerState extends State<CuratedViewer> {
         duration: const Duration(milliseconds: 250),
         curve: Curves.easeOutCubic,
         alignment: Alignment.topCenter,
-        child: widget.showAttribution
-            ? _Attribution(item: current, onOpenLink: widget.onOpenLink ?? openExternalLink)
-            : const SizedBox(width: double.infinity),
+        child: _Attribution(
+          item: current,
+          showDetails: widget.showAttribution,
+          onOpenLink: widget.onOpenLink ?? openExternalLink,
+        ),
       ),
     ]);
   }
@@ -143,19 +146,13 @@ class _CuratedImage extends StatelessWidget {
       child: Semantics(
         image: true,
         label: label,
-        // Image.network uses the app-wide ImageCache (same as the precaching above).
-        child: Image.network(
-          url,
+        child: Image(
+          image: CachedRemoteImage(url),
           fit: BoxFit.contain,
           gaplessPlayback: true,
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            final total = progress.expectedTotalBytes;
-            return Center(
-              child: CircularProgressIndicator(
-                value: total == null ? null : progress.cumulativeBytesLoaded / total,
-              ),
-            );
+          frameBuilder: (context, child, frame, synchronous) {
+            if (synchronous || frame != null) return child;
+            return const Center(child: CircularProgressIndicator());
           },
           errorBuilder: (context, error, _) => const Center(
             child: Icon(Icons.image_not_supported_outlined, size: 48, color: Colors.white54),
@@ -253,10 +250,11 @@ class _Dot extends StatelessWidget {
 }
 
 class _Attribution extends StatelessWidget {
-  const _Attribution({required this.item, required this.onOpenLink});
+  const _Attribution({required this.item, required this.onOpenLink, required this.showDetails});
 
   final CuratedHighlight item;
   final ValueChanged<String> onOpenLink;
+  final bool showDetails;
 
   @override
   Widget build(BuildContext context) {
@@ -264,21 +262,40 @@ class _Attribution extends StatelessWidget {
     final small = theme.textTheme.bodySmall;
     final link = Uri.tryParse(item.sourceUrl);
     final hasLink = link != null && (link.scheme == 'https' || link.scheme == 'http');
-    final outlet = item.sourceOutlet.isNotEmpty ? item.sourceOutlet : 'source';
+    final outlet = item.sourceLinkText.trim().isNotEmpty
+        ? item.sourceLinkText.trim()
+        : item.sourceOutlet.isNotEmpty
+            ? item.sourceOutlet
+            : 'source';
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
       child: Column(
         key: const Key('curated-attribution'),
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (item.title.isNotEmpty)
+          if (showDetails && item.title.isNotEmpty)
             Text(item.title, key: const Key('curated-title'), style: theme.textTheme.titleSmall),
-          if (item.caption.isNotEmpty)
+          if (showDetails && item.caption.isNotEmpty)
             Text(item.caption, key: const Key('curated-caption'), style: small),
           if (item.credit.isNotEmpty)
             Text('Credit: ${item.credit}', key: const Key('curated-credit'), style: small),
+          if (item.modifications.isNotEmpty)
+            Text('Changes: ${item.modifications}',
+                key: const Key('curated-modifications'), style: small),
+          if (item.licenseName.isNotEmpty)
+            Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Text('Licence: ', style: small),
+              if (Uri.tryParse(item.licenseUrl)?.scheme == 'https')
+                TextButton(
+                  key: const Key('curated-license-link'),
+                  onPressed: () => onOpenLink(item.licenseUrl),
+                  child: Text(item.licenseName),
+                )
+              else
+                Text(item.licenseName, style: small),
+            ]),
           if (item.sourceOutlet.isNotEmpty || hasLink)
-            Row(children: [
+            Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
               Text('Source: ', style: small),
               if (hasLink)
                 InkWell(

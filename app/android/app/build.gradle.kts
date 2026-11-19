@@ -7,8 +7,7 @@ plugins {
 }
 
 // Release signing key: android/key.properties + the .jks it points to (both git-ignored).
-// Without them, release builds fall back to the debug key (fine for testing only: you can't
-// later install an update signed with a different key over it).
+// Public release builds must never fall back to debug signing.
 val keyProperties = Properties().apply {
     val file = rootProject.file("key.properties")
     if (file.exists()) file.inputStream().use { load(it) }
@@ -47,7 +46,7 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName(if (hasReleaseKey) "release" else "debug")
+            signingConfig = if (hasReleaseKey) signingConfigs.getByName("release") else null
         }
     }
 }
@@ -60,4 +59,26 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+val verifyReleaseReadiness by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Block public builds with unresolved legal/privacy release inputs."
+    workingDir(rootProject.projectDir.resolve("../.."))
+    commandLine("python", "tools/release.py", "check", "--for-build")
+    doFirst {
+        check(hasReleaseKey) {
+            "Release key missing. Configure android/key.properties; debug signing is prohibited."
+        }
+        listOf("storeFile", "storePassword", "keyAlias", "keyPassword").forEach {
+            check(!keyProperties.getProperty(it).isNullOrBlank()) { "Release signing field missing: $it" }
+        }
+        check(rootProject.file(keyProperties.getProperty("storeFile")).isFile) {
+            "Configured release keystore does not exist."
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name == "preReleaseBuild") dependsOn(verifyReleaseReadiness)
 }

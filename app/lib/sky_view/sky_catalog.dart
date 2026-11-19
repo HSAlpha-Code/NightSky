@@ -236,7 +236,7 @@ class SkyCatalog {
       iz[i] = v.z;
       mags[i] = mag;
       colors[i] = bvToStarColor(bv).toARGB32();
-      if (namedByHip.containsKey(hip)) {
+      if (namedByHip[hip]?.name.isNotEmpty == true) {
         namedIdx.add(i);
       }
     }
@@ -327,6 +327,9 @@ class SkyCatalog {
     ]);
     return parse(starsBin: results[0] as ByteData, catalogJson: results[1] as String);
   }
+
+  /// HIP-only entries have no matching landmark in the backend's named-star catalog.
+  bool isVisibleStar(int index) => namedStarsByHip[starHip[index]]?.name.isNotEmpty == true;
 
   /// Build a rich [SkyObject] for star index [i] (`0 <= i < starCount`).
   SkyObject starObjectAt(int i) {

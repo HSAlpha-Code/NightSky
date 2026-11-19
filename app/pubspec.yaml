@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   camera: ^0.12.0+1
   geolocator: ^14.0.2
+  crypto: ^3.0.8
   dio: ^5.11.1
   flutter_riverpod: ^3.3.2
   image: ^4.12.0
@@ -64,6 +65,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/legal/
     - assets/sky/mellinger_east.webp
     - assets/sky/mellinger_west.webp
     - assets/sky/stars.bin

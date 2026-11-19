@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' show Offset, Size;
+import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
@@ -9,6 +11,8 @@ import 'package:night_sky/sky_math.dart';
 import 'package:night_sky/sky_view/astro_math.dart';
 import 'package:night_sky/sky_view/ephemeris.dart';
 import 'package:night_sky/sky_view/sky_catalog.dart';
+import 'package:night_sky/settings.dart';
+import 'package:night_sky/sky_view/sky_overlay_painter.dart';
 
 void main() {
   late SkyCatalog catalog;
@@ -20,6 +24,43 @@ void main() {
       starsBin: ByteData.sublistView(starsBytes),
       catalogJson: catalogJson,
     );
+  });
+
+  test('HIP-only stars are neither drawn nor selectable; named stars remain', () async {
+    final bytes = ByteData(20);
+    for (var i = 0; i < 4; i++) {
+      bytes.setUint8(i, 'NSKY'.codeUnitAt(i));
+    }
+    bytes.setUint16(6, 1, Endian.little);
+    bytes.setUint32(8, 123, Endian.little);
+    final when = DateTime.utc(2026, 11, 11);
+    final hor = raDecToAltAz(raDeg: 0, decDeg: 0, latitudeDeg: 0, longitudeDeg: 0, when: when);
+    final camera = SkyCamera.fromAltAz(
+      altitudeDeg: hor.altitudeDeg, azimuthDeg: hor.azimuthDeg,
+      latitudeDeg: 0, longitudeDeg: 0, when: when, fovDeg: 60,
+    );
+    for (final named in [false, true]) {
+      final cat = SkyCatalog.parse(starsBin: bytes, catalogJson: jsonEncode({
+        'named_stars': named ? [[123, 'Named star', '', '', null]] : [],
+      }));
+      final renderer = SkySceneRenderer(
+        camera: camera, quality: SkyQuality.balanced, catalog: cat, nightVision: false,
+        layers: const SkyLayerVisibility(milkyWay: false, constellations: false,
+            solarSystem: false, deepSky: false, labels: false, horizon: false),
+      );
+      expect(cat.isVisibleStar(0), named);
+      expect(cat.namedStarIndices, named ? [0] : isEmpty);
+      final hit = renderer.hitTest(const Offset(50, 50), const Size(100, 100));
+      expect(hit?.id, named ? 'HIP123' : null);
+      final recorder = ui.PictureRecorder();
+      renderer.paint(ui.Canvas(recorder), const Size(100, 100));
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(100, 100);
+      final pixels = (await image.toByteData())!.buffer.asUint8List();
+      expect(pixels.any((v) => v != 0), named);
+      image.dispose();
+      picture.dispose();
+    }
   });
 
   group('Astronomical coordinate transforms', () {

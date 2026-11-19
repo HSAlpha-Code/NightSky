@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import '../sensors.dart';
 import '../settings.dart';
 import '../sky_math.dart';
 import '../state.dart';
+import '../upload_consent.dart';
 import '../widgets/camera_hints.dart';
 import '../widgets/glass.dart';
 import '../widgets/provider_picker.dart';
@@ -171,6 +173,20 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     if (controller == null || _capturing || controller.value.isTakingPicture) return;
     setState(() => _capturing = true);
     try {
+      final server = ref.read(serverUrlProvider);
+      final consent = ref.read(uploadConsentProvider);
+      if (!consent.covers(server)) {
+        final accepted = await requestUploadConsent(context, server);
+        if (!mounted) return;
+        if (!accepted) {
+          // A declined automatic capture must not reopen the dialog every two seconds.
+          ref.read(settingsProvider.notifier).update((s) => s.copyWith(autoCapture: false));
+          return;
+        }
+        // The receiving server must still be the one named in the disclosure.
+        if (ref.read(serverUrlProvider) != server) return;
+        consent.accept(server);
+      }
       // Orientation is the average of the moment just before the shutter.
       final quaternion = _orientation.averaged();
       final timestamp = DateTime.now().toUtc();
@@ -180,6 +196,12 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       final file = await controller.takePicture();
       final position = await positionFuture;
       final raw = await file.readAsBytes();
+      // The camera plugin writes a temporary capture; keep only the in-memory session.
+      try {
+        await File(file.path).delete();
+      } on FileSystemException {
+        // Android may already have removed the temporary capture.
+      }
       final meta = CaptureMetadata(
         timestampUtc: timestamp,
         latitude: position?.latitude,
@@ -195,17 +217,20 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       );
       ref.read(sessionProvider.notifier).start(raw, meta);
       if (!mounted) return;
-      await Navigator.of(context)
-          .push(MaterialPageRoute<void>(builder: (_) => const ResultScreen()));
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => const ResultScreen()));
     } on CameraException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not take the photo (${e.description ?? e.code}).')));
+          SnackBar(content: Text('Could not take the photo (${e.description ?? e.code}).')),
+        );
       }
     } finally {
       if (mounted) setState(() => _capturing = false);
     }
   }
+
   @override
   Widget build(BuildContext context) {
     // Settings changes (sensor mode, smoothing) apply immediately.

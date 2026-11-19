@@ -93,6 +93,14 @@ class CuratedApiTests(TestCase):
             self.assertEqual(r.status_code, 404)
             self.assertEqual(r.json()["error"]["code"], "NOT_FOUND")
 
+    def test_image_licence_and_modifications_survive_database_api_roundtrip(self):
+        make(license_name="CC BY 4.0", license_url="https://creativecommons.org/licenses/by/4.0/",
+             modifications="Cropped and resized")
+        item = self.client.get("/api/curated/NGC1976/").json()["highlights"][0]
+        self.assertEqual(item["license_name"], "CC BY 4.0")
+        self.assertEqual(item["license_url"], "https://creativecommons.org/licenses/by/4.0/")
+        self.assertEqual(item["modifications"], "Cropped and resized")
+
     def test_other_bodies_do_not_change_detail_etag(self):
         make()
         etag = self.client.get("/api/curated/NGC1976/")["ETag"]

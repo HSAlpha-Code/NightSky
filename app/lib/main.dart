@@ -4,11 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'curated.dart';
 import 'screens/camera_screen.dart';
-import 'screens/sky_view_screen.dart';
 import 'settings.dart';
+import 'legal_notices.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  registerDataLicences();
   await SystemChrome.setPreferredOrientations(ScreenOrientationMode.auto.orientations);
   runApp(const ProviderScope(child: NightSkyApp()));
 }
@@ -18,9 +19,11 @@ class NightSkyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final startInSkyView = ref.watch(settingsProvider.select((s) => s.startInSkyView));
+    final restored = ref.watch(settingsRestoredProvider);
     return NightSkyAppShell(
-      home: startInSkyView ? const SkyViewScreen() : const CameraScreen(),
+      home: restored.isLoading
+          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+          : const CameraScreen(),
     );
   }
 }

@@ -6,6 +6,8 @@ import '../models.dart';
 import '../sensors.dart';
 import '../settings.dart';
 import '../state.dart';
+import '../upload_consent.dart';
+import 'legal_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -47,6 +49,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     });
     try {
       final catalog = await ApiClient(url).getProviders();
+      if (!sameServerUrl(url, ref.read(serverUrlProvider))) {
+        ref.read(uploadConsentProvider).revoke();
+      }
       ref.read(serverUrlProvider.notifier).set(url);
       ref.invalidate(providerCatalogProvider);
       ref.read(selectedProviderProvider.notifier).select(null);
@@ -125,15 +130,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           onSelected: (v) => notifier.update((s) => s.copyWith(skyQuality: v)),
         ),
         SwitchListTile(
-          key: const Key('setting-start-sky-view'),
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Start in Sky View'),
-          subtitle: const Text(
-              'Launch directly into the 3D virtual sky without starting the camera.'),
-          value: s.startInSkyView,
-          onChanged: (v) => notifier.update((s) => s.copyWith(startInSkyView: v)),
-        ),
-        SwitchListTile(
           key: const Key('setting-horizon-shading'),
           contentPadding: EdgeInsets.zero,
           title: const Text('Horizon & ground shading'),
@@ -203,6 +199,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 16),
           Text(_status!),
         ],
+        const SizedBox(height: 16),
+        const _SectionHeader('Privacy & licences'),
+        ListTile(
+          title: const Text('Privacy policy'),
+          leading: const Icon(Icons.privacy_tip_outlined),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) =>
+                  const LegalScreen(title: 'Privacy policy', asset: 'assets/legal/privacy.txt'),
+            ),
+          ),
+        ),
+        ListTile(
+          title: const Text('Image & data credits'),
+          leading: const Icon(Icons.photo_library_outlined),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const LegalScreen(
+                title: 'Image & data credits',
+                asset: 'assets/legal/credits.txt',
+              ),
+            ),
+          ),
+        ),
+        ListTile(
+          title: const Text('Terms of use'),
+          leading: const Icon(Icons.article_outlined),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) =>
+                  const LegalScreen(title: 'Terms of use', asset: 'assets/legal/terms.txt'),
+            ),
+          ),
+        ),
+        ListTile(
+          title: const Text('Open-source licences'),
+          leading: const Icon(Icons.description_outlined),
+          onTap: () => showLicensePage(context: context, applicationName: 'NightSky'),
+        ),
+        ListTile(
+          title: const Text('Revoke photo upload consent'),
+          subtitle: const Text('Ask again before the next capture.'),
+          leading: const Icon(Icons.cloud_off_outlined),
+          onTap: () {
+            ref.read(uploadConsentProvider).revoke();
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('Photo upload consent revoked.')));
+          },
+        ),
       ]),
     );
   }

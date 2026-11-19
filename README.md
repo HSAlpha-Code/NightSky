@@ -1,5 +1,14 @@
 # NightSky
 
+## Google Play release preparation
+
+Start with [release/README.md](release/README.md) and
+[remaining actions](release/remaining-actions.md). The app now includes bundled legal
+documents, visible source/licence credits and photo-upload consent. Public release
+builds require completed publisher/privacy inputs, image-rights evidence and a real
+signing key; unresolved items deliberately fail the release check. Use debug builds
+for development while the retained images' permissions are resolved.
+
 Point your phone at the night sky, take a photo, and NightSky replaces it with a professional
 survey image of the same patch of sky — or switch to **Sky View** to explore a live 3D virtual
 night sky driven by the phone's orientation sensors, with no camera or internet connection needed.
@@ -121,7 +130,7 @@ installed, uninstall it first (different signing key).
 
 **Release key:** `app/android/nightsky-release.jks` and `app/android/key.properties` are
 git-ignored. Never commit them, and back them up: every update must be signed with the same key.
-Without them, release builds silently fall back to the debug key.
+Without them, release builds fail. They never fall back to the debug key.
 
 To change the icon, replace `app/tool/icon/nightsky_icon_source.png` and run
 `python app/tool/icon/make_icons.py`.

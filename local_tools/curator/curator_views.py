@@ -16,7 +16,8 @@ import curator_images
 from curator_export import export_bundle
 
 PAGE = Path(__file__).with_name("curator_page.html")
-FIELDS = ("title", "source_outlet", "source_url", "credit", "caption")
+FIELDS = ("title", "source_outlet", "source_url", "source_link_text", "credit", "caption",
+          "license_name", "license_url", "modifications")
 
 
 class CuratorGuardMiddleware:

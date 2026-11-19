@@ -85,12 +85,37 @@ class _FixedServerUrl extends ServerUrlNotifier {
 }
 
 void main() {
+  testWidgets('required credits and licence survive collapsed image details', (tester) async {
+    String? opened;
+    final highlight = CuratedHighlight.fromJson({
+      'id': 1, 'image_url': 'http://test/image.jpg', 'title': 'Optional title',
+      'caption': 'Optional caption', 'credit': 'Original author',
+      'source_url': 'https://source.example/image', 'license_name': 'CC BY 4.0',
+      'license_url': 'https://creativecommons.org/licenses/by/4.0/',
+      'modifications': 'Cropped and resized',
+    });
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+      child: SizedBox(width: 400, child: CuratedViewer(
+        highlights: [highlight], showAttribution: false, onOpenLink: (url) => opened = url,
+      )),
+    ))));
+    expect(find.text('Optional caption'), findsNothing);
+    expect(find.text('Credit: Original author'), findsOneWidget);
+    expect(find.text('Changes: Cropped and resized'), findsOneWidget);
+    final licence = find.byKey(const Key('curated-license-link'));
+    await tester.ensureVisible(licence);
+    await tester.tap(licence);
+    expect(opened, 'https://creativecommons.org/licenses/by/4.0/');
+    await leave(tester);
+  });
+
   group('CuratedViewer', () {
     testWidgets('one image: no dots, no swiping', (tester) async {
       await tester.pumpWidget(viewer(highlights(1)));
       expect(find.byKey(const Key('curated-dot-0')), findsNothing);
       expect(find.byKey(const Key('curated-counter')), findsNothing);
       await tester.drag(find.byKey(const Key('curated-pages')), const Offset(-300, 0));
+      await settle(tester);
       await tester.pumpAndSettle();
       expect(find.text('Caption 0'), findsOneWidget);
     });
@@ -115,6 +140,7 @@ void main() {
       expect(dotWidth(tester, 1), greaterThan(8.5));
       expect(dotWidth(tester, 0), lessThan(18));
       await gesture.up();
+      await settle(tester);
       await tester.pumpAndSettle();
 
       expect(dotWidth(tester, 1), greaterThan(dotWidth(tester, 0)));
@@ -123,6 +149,7 @@ void main() {
       expect(find.text('Caption 0'), findsNothing);
 
       await tester.tap(find.byKey(const Key('curated-dot-tap-2')));
+      await settle(tester);
       await tester.pumpAndSettle();
       expect(dotWidth(tester, 2), greaterThan(dotWidth(tester, 1)));
       expect(find.text('Caption 2'), findsOneWidget);
@@ -130,6 +157,21 @@ void main() {
 
       await tester.tap(find.byKey(const Key('curated-source-link')));
       expect(opened, 'https://example.org/2');
+    });
+
+    testWidgets('source link shows the custom link text, else the outlet', (tester) async {
+      const custom = CuratedHighlight(
+          id: 1,
+          imageUrl: 'http://test/a.jpg',
+          sourceOutlet: 'NASA',
+          sourceUrl: 'https://example.org/a',
+          sourceLinkText: 'Read the full NASA article');
+      await tester.pumpWidget(viewer(const [custom]));
+      expect(find.text('Read the full NASA article'), findsOneWidget);
+      expect(find.text('NASA'), findsNothing);
+
+      await tester.pumpWidget(viewer([highlights(1).first]));
+      expect(find.text('Outlet 0'), findsOneWidget);
     });
 
     testWidgets('dots have accessibility labels', (tester) async {
@@ -144,6 +186,7 @@ void main() {
       expect(find.byKey(const Key('curated-dot-0')), findsNothing);
       expect(find.text('1 / 12'), findsOneWidget);
       await tester.drag(find.byKey(const Key('curated-pages')), const Offset(-300, 0));
+      await settle(tester);
       await tester.pumpAndSettle();
       expect(find.text('2 / 12'), findsOneWidget);
     });
@@ -153,6 +196,7 @@ void main() {
       await tester.pumpWidget(viewer(highlights(4), initial: 2, onPageChanged: pages.add));
       expect(find.text('Caption 2'), findsOneWidget);
       await tester.tap(find.byKey(const Key('curated-dot-tap-0')));
+      await settle(tester);
       await tester.pumpAndSettle();
       expect(pages.last, 0);
     });

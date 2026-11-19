@@ -553,272 +553,260 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final viewSize = Size(
-              constraints.maxWidth > 0 ? constraints.maxWidth : 360.0,
-              constraints.maxHeight > 0 ? constraints.maxHeight : 640.0,
-            );
-            final isLandscape = viewSize.width > viewSize.height;
-            final guideInfo = _guideTarget == null
-                ? null
-                : camera.guideTowards(_guideTarget!.icrs, viewSize);
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final viewSize = Size(
+            constraints.maxWidth > 0 ? constraints.maxWidth : 360.0,
+            constraints.maxHeight > 0 ? constraints.maxHeight : 640.0,
+          );
+          final insets = MediaQuery.paddingOf(context);
+          final isLandscape = viewSize.width > viewSize.height;
+          final guideInfo = _guideTarget == null
+              ? null
+              : camera.guideTowards(_guideTarget!.icrs, viewSize);
 
-            final manualChip = _manualMode
-                ? ActionChip(
-                    key: const Key('resume-live-compass'),
-                    visualDensity: isLandscape ? VisualDensity.compact : null,
-                    backgroundColor: Colors.black.withValues(alpha: 0.7),
-                    avatar: const Icon(Icons.explore, size: 17),
-                    label: Text(
-                      _sensors != null &&
-                              !_sensors!.supports(SensorMode.compass) &&
-                              !_sensors!.supports(SensorMode.gyro)
-                          ? 'Manual drag (no compass sensor)'
-                          : 'Manual drag · Tap for live compass',
-                    ),
-                    onPressed: _resumeLiveSensors,
-                  )
-                : null;
+          final manualChip = _manualMode
+              ? ActionChip(
+                  key: const Key('resume-live-compass'),
+                  visualDensity: isLandscape ? VisualDensity.compact : null,
+                  backgroundColor: Colors.black.withValues(alpha: 0.7),
+                  avatar: const Icon(Icons.explore, size: 17),
+                  label: Text(
+                    _sensors != null &&
+                            !_sensors!.supports(SensorMode.compass) &&
+                            !_sensors!.supports(SensorMode.gyro)
+                        ? 'Manual drag (no compass sensor)'
+                        : 'Manual drag · Tap for live compass',
+                  ),
+                  onPressed: _resumeLiveSensors,
+                )
+              : null;
 
-            final timeBar = TimeMachineBar(
-              effectiveUtc: skyUtc,
-              isLive: _isLiveTime,
-              playing: _timelapsePlaying,
-              expanded: _timeExpanded,
-              sliderHours: _sliderHours,
-              onToggleExpanded: () => setState(() => _timeExpanded = !_timeExpanded),
-              onSliderChanged: (h) => setState(() {
-                _anchorUtc ??= DateTime.now().toUtc();
-                _sliderHours = h;
-              }),
-              onStep: (delta) => setState(() {
-                final cur = _effectiveUtc();
-                _anchorUtc = cur.add(delta);
-                _sliderHours = 0.0;
-              }),
-              onTogglePlay: () => setState(() {
-                _anchorUtc = _effectiveUtc();
-                _sliderHours = 0.0;
-                _timelapsePlaying = !_timelapsePlaying;
-              }),
-              onResetNow: () => setState(() {
-                _anchorUtc = null;
-                _sliderHours = 0.0;
-                _timelapsePlaying = false;
-              }),
-              onPickDateTime: _pickDateTime,
-            );
+          final timeBar = TimeMachineBar(
+            effectiveUtc: skyUtc,
+            isLive: _isLiveTime,
+            playing: _timelapsePlaying,
+            expanded: _timeExpanded,
+            sliderHours: _sliderHours,
+            onToggleExpanded: () => setState(() => _timeExpanded = !_timeExpanded),
+            onSliderChanged: (h) => setState(() {
+              _anchorUtc ??= DateTime.now().toUtc();
+              _sliderHours = h;
+            }),
+            onStep: (delta) => setState(() {
+              final cur = _effectiveUtc();
+              _anchorUtc = cur.add(delta);
+              _sliderHours = 0.0;
+            }),
+            onTogglePlay: () => setState(() {
+              _anchorUtc = _effectiveUtc();
+              _sliderHours = 0.0;
+              _timelapsePlaying = !_timelapsePlaying;
+            }),
+            onResetNow: () => setState(() {
+              _anchorUtc = null;
+              _sliderHours = 0.0;
+              _timelapsePlaying = false;
+            }),
+            onPickDateTime: _pickDateTime,
+          );
 
-            final pointingPill = settings.showPointingReadout
-                ? PointingReadout(
-                    altitudeDeg: center.altitudeDeg,
-                    azimuthDeg: center.azimuthDeg,
-                    usingGyroscope: _orientation.mode == SensorMode.gyro,
-                  )
-                : null;
+          final pointingPill = settings.showPointingReadout
+              ? PointingReadout(
+                  altitudeDeg: center.altitudeDeg,
+                  azimuthDeg: center.azimuthDeg,
+                  usingGyroscope: _orientation.mode == SensorMode.gyro,
+                )
+              : null;
 
-            final creditLine = Text(
-              '${spotlit != null ? '${spotlit.name} · ' : ''}'
-              'FOV ${camera.horizontalFovDeg(viewSize).round()}° · Milky Way © Axel Mellinger',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54),
-              textAlign: TextAlign.center,
-            );
+          final creditLine = Text(
+            '${spotlit != null ? '${spotlit.name} · ' : ''}'
+            'FOV ${camera.horizontalFovDeg(viewSize).round()}° · Milky Way © Axel Mellinger',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54),
+            textAlign: TextAlign.center,
+          );
 
-            return GestureDetector(
-              key: const Key('sky-view-canvas'),
-              behavior: HitTestBehavior.opaque,
-              onTapUp: (details) {
-                final hit = sceneRenderer.hitTest(details.localPosition, viewSize);
-                if (hit != null) {
-                  _openObjectSheet(hit, lat, lon, skyUtc);
-                } else if (_selectedObject != null) {
-                  setState(() => _selectedObject = null);
-                }
-              },
-              onScaleStart: (details) {
-                _pinchBaseFov = _fovDeg;
-                _lastFocalPoint = details.localFocalPoint;
-                if (details.pointerCount == 1 && !_manualMode) {
-                  setState(() => _enterManualFromCurrent(camera));
-                }
-              },
-              onScaleUpdate: (details) {
-                setState(() {
-                  if (details.pointerCount >= 2) {
-                    _fovDeg = (_pinchBaseFov / details.scale).clamp(20.0, 95.0);
-                  } else if (_lastFocalPoint != null) {
-                    final delta = details.localFocalPoint - _lastFocalPoint!;
-                    if (delta.distance > 0.5) {
-                      _enterManualFromCurrent(camera);
-                      final refSide = viewSize.shortestSide > 0 ? viewSize.shortestSide : 360.0;
-                      final degPerPx = _fovDeg / refSide;
-                      final rollRad = _manualRollDeg * degToRad;
-                      final cr = math.cos(rollRad);
-                      final sr = math.sin(rollRad);
-                      final dRight = delta.dx * cr + delta.dy * sr;
-                      final dDown = -delta.dx * sr + delta.dy * cr;
-                      _manualAzDeg = (_manualAzDeg - dRight * degPerPx) % 360.0;
-                      if (_manualAzDeg < 0) _manualAzDeg += 360.0;
-                      _manualAltDeg = (_manualAltDeg + dDown * degPerPx).clamp(-89.5, 89.5);
-                    }
+          return GestureDetector(
+            key: const Key('sky-view-canvas'),
+            behavior: HitTestBehavior.opaque,
+            onTapUp: (details) {
+              final hit = sceneRenderer.hitTest(details.localPosition, viewSize);
+              if (hit != null) {
+                _openObjectSheet(hit, lat, lon, skyUtc);
+              } else if (_selectedObject != null) {
+                setState(() => _selectedObject = null);
+              }
+            },
+            onScaleStart: (details) {
+              _pinchBaseFov = _fovDeg;
+              _lastFocalPoint = details.localFocalPoint;
+              if (details.pointerCount == 1 && !_manualMode) {
+                setState(() => _enterManualFromCurrent(camera));
+              }
+            },
+            onScaleUpdate: (details) {
+              setState(() {
+                if (details.pointerCount >= 2) {
+                  _fovDeg = (_pinchBaseFov / details.scale).clamp(20.0, 95.0);
+                } else if (_lastFocalPoint != null) {
+                  final delta = details.localFocalPoint - _lastFocalPoint!;
+                  if (delta.distance > 0.5) {
+                    _enterManualFromCurrent(camera);
+                    final refSide = viewSize.shortestSide > 0 ? viewSize.shortestSide : 360.0;
+                    final degPerPx = _fovDeg / refSide;
+                    final rollRad = _manualRollDeg * degToRad;
+                    final cr = math.cos(rollRad);
+                    final sr = math.sin(rollRad);
+                    final dRight = delta.dx * cr + delta.dy * sr;
+                    final dDown = -delta.dx * sr + delta.dy * cr;
+                    _manualAzDeg = (_manualAzDeg - dRight * degPerPx) % 360.0;
+                    if (_manualAzDeg < 0) _manualAzDeg += 360.0;
+                    _manualAltDeg = (_manualAltDeg + dDown * degPerPx).clamp(-89.5, 89.5);
                   }
-                  _lastFocalPoint = details.localFocalPoint;
-                });
-              },
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  RepaintBoundary(
-                    child: CustomPaint(
-                      size: Size.infinite,
-                      painter: SkySpherePainter(
-                        camera: camera,
-                        panorama: panorama,
-                        shaderProgram: shaderProgram,
-                        sunAltitudeDeg: solar.sunAltitudeDeg,
-                        showMilkyWay: layers.milkyWay,
-                        showHorizon: layers.horizon,
-                        horizonShading: settings.horizonShading,
-                        nightVision: settings.nightVision,
-                        overlayPaint: sceneRenderer.paint,
-                      ),
+                }
+                _lastFocalPoint = details.localFocalPoint;
+              });
+            },
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                RepaintBoundary(
+                  child: CustomPaint(
+                    size: Size.infinite,
+                    painter: SkySpherePainter(
+                      camera: camera,
+                      panorama: panorama,
+                      shaderProgram: shaderProgram,
+                      sunAltitudeDeg: solar.sunAltitudeDeg,
+                      showMilkyWay: layers.milkyWay,
+                      showHorizon: layers.horizon,
+                      horizonShading: settings.horizonShading,
+                      nightVision: settings.nightVision,
+                      overlayPaint: sceneRenderer.paint,
                     ),
                   ),
+                ),
 
-                  // Top toolbar: Search/Find, Location, Layers, Calibration, Mode switch, Settings.
-                  Positioned(
-                    top: 6,
-                    left: 6,
-                    right: 6,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Row(
-                                children: [
-                                  _SkyHudIconButton(
-                                    key: const Key('sky-find-button'),
-                                    tooltip: 'Find object',
-                                    icon: Icons.search,
-                                    onPressed: () => _openSearchSheet(
-                                      catalog,
-                                      solar,
-                                      curatedIds,
-                                      lat,
-                                      lon,
-                                      skyUtc,
-                                    ),
+                // Top toolbar: Search/Find, Location, Layers, Calibration, Mode switch, Settings.
+                Positioned(
+                  top: insets.top + 6,
+                  left: insets.left + 6,
+                  right: insets.right + 6,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                _SkyHudIconButton(
+                                  key: const Key('sky-find-button'),
+                                  tooltip: 'Find object',
+                                  icon: Icons.search,
+                                  onPressed: () => _openSearchSheet(
+                                    catalog,
+                                    solar,
+                                    curatedIds,
+                                    lat,
+                                    lon,
+                                    skyUtc,
                                   ),
-                                  const SizedBox(width: 4),
-                                  Flexible(
-                                    child: _SkyLocationPill(
-                                      key: const Key('sky-location-pill'),
-                                      icon: settings.useManualLocation
-                                          ? Icons.edit_location_alt_outlined
-                                          : Icons.location_on_outlined,
-                                      label: _locationBadgeLabel(settings, lat, lon),
-                                      onPressed: () => _openLocationSheet(lat, lon),
-                                    ),
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: _SkyLocationPill(
+                                    key: const Key('sky-location-pill'),
+                                    icon: settings.useManualLocation
+                                        ? Icons.edit_location_alt_outlined
+                                        : Icons.location_on_outlined,
+                                    label: _locationBadgeLabel(settings, lat, lon),
+                                    onPressed: () => _openLocationSheet(lat, lon),
                                   ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            _SkyHudIconButton(
-                              key: const Key('sky-layers-button'),
-                              tooltip: 'Sky Layers & Display',
-                              icon: Icons.tune,
-                              onPressed: _openLayersSheet,
-                            ),
-                            const SizedBox(width: 3),
-                            _SkyHudIconButton(
-                              key: const Key('sky-calibrate-button'),
-                              tooltip: 'Sensors & calibration',
-                              icon: _manualMode
-                                  ? Icons.touch_app_outlined
-                                  : Icons.explore_outlined,
-                              iconColor: _orientation.needsCalibration ? Colors.amber : Colors.white,
-                              onPressed: () => _showCalibrationSheet(declDeg, camera),
-                            ),
-                            const SizedBox(width: 4),
-                            ModeSwitchPill(
-                              key: const Key('switch-to-camera'),
-                              isSkyView: true,
-                              tooltip: 'Switch to Camera mode',
-                              onPressed: _openCameraMode,
-                            ),
-                            const SizedBox(width: 3),
-                            _SkyHudIconButton(
-                              tooltip: 'Settings',
-                              icon: Icons.settings_outlined,
-                              onPressed: () => Navigator.of(context).push(
-                                MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        // Active "Find object" directional guide banner.
-                        if (_guideTarget != null && guideInfo != null)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 520),
-                              child: _GuideBanner(
-                                target: _guideTarget!,
-                                angleDeg: guideInfo.angleDeg,
-                                manualMode: _manualMode,
-                                onCenter: () => _centerOnObject(_guideTarget!, lat, lon, skyUtc),
-                                onDetails: () => _openObjectSheet(_guideTarget!, lat, lon, skyUtc),
-                                onClear: () => setState(() => _guideTarget = null),
-                              ),
-                            ),
-                          )
-                        else if (!_manualMode && _orientation.needsCalibration)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: ActionChip(
-                              key: const Key('compass-calibration-warning'),
-                              backgroundColor: Colors.black.withValues(alpha: 0.72),
-                              avatar: const Icon(Icons.warning_amber_rounded,
-                                  size: 17, color: Colors.amber),
-                              label: const Text('Compass accuracy low · Tap to calibrate'),
-                              onPressed: () => _showCalibrationSheet(declDeg, camera),
+                                ),
+                              ],
                             ),
                           ),
-                      ],
-                    ),
-                  ),
+                          const SizedBox(width: 4),
+                          _SkyHudIconButton(
+                            key: const Key('sky-layers-button'),
+                            tooltip: 'Sky Layers & Display',
+                            icon: Icons.tune,
+                            onPressed: _openLayersSheet,
+                          ),
+                          const SizedBox(width: 3),
+                          _SkyHudIconButton(
+                            key: const Key('sky-calibrate-button'),
+                            tooltip: 'Sensors & calibration',
+                            icon: _manualMode
+                                ? Icons.touch_app_outlined
+                                : Icons.explore_outlined,
+                            iconColor: _orientation.needsCalibration ? Colors.amber : Colors.white,
+                            onPressed: () => _showCalibrationSheet(declDeg, camera),
+                          ),
+                          const SizedBox(width: 4),
+                          ModeSwitchPill(
+                            key: const Key('switch-to-camera'),
+                            isSkyView: true,
+                            tooltip: 'Switch to Camera mode',
+                            onPressed: _openCameraMode,
+                          ),
+                          const SizedBox(width: 3),
+                          _SkyHudIconButton(
+                            tooltip: 'Settings',
+                            icon: Icons.settings_outlined,
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+                            ),
+                          ),
+                        ],
+                      ),
 
-                  // Bottom HUD: Manual/Live pill, Time Machine scrubber, Pointing readout, credit.
-                  Positioned(
-                    left: 12,
-                    right: 12,
-                    bottom: isLandscape ? 4 : 8,
-                    child: isLandscape
-                        ? Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_timeExpanded) ...[
-                                timeBar,
-                                if (manualChip != null || pointingPill != null) ...[
-                                  const SizedBox(height: 4),
-                                  Wrap(
-                                    alignment: WrapAlignment.center,
-                                    crossAxisAlignment: WrapCrossAlignment.center,
-                                    spacing: 8,
-                                    runSpacing: 4,
-                                    children: [
-                                      if (manualChip != null) manualChip,
-                                      if (pointingPill != null) pointingPill,
-                                    ],
-                                  ),
-                                ],
-                              ] else
+                      // Active "Find object" directional guide banner.
+                      if (_guideTarget != null && guideInfo != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 520),
+                            child: _GuideBanner(
+                              target: _guideTarget!,
+                              angleDeg: guideInfo.angleDeg,
+                              manualMode: _manualMode,
+                              onCenter: () => _centerOnObject(_guideTarget!, lat, lon, skyUtc),
+                              onDetails: () => _openObjectSheet(_guideTarget!, lat, lon, skyUtc),
+                              onClear: () => setState(() => _guideTarget = null),
+                            ),
+                          ),
+                        )
+                      else if (!_manualMode && _orientation.needsCalibration)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: ActionChip(
+                            key: const Key('compass-calibration-warning'),
+                            backgroundColor: Colors.black.withValues(alpha: 0.72),
+                            avatar: const Icon(Icons.warning_amber_rounded,
+                                size: 17, color: Colors.amber),
+                            label: const Text('Compass accuracy low · Tap to calibrate'),
+                            onPressed: () => _showCalibrationSheet(declDeg, camera),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+
+                // Bottom HUD: Manual/Live pill, Time Machine scrubber, Pointing readout, credit.
+                Positioned(
+                  left: insets.left + 12,
+                  right: insets.right + 12,
+                  bottom: insets.bottom + (isLandscape ? 4 : 8),
+                  child: isLandscape
+                      ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_timeExpanded) ...[
+                              timeBar,
+                              if (manualChip != null || pointingPill != null) ...[
+                                const SizedBox(height: 4),
                                 Wrap(
                                   alignment: WrapAlignment.center,
                                   crossAxisAlignment: WrapCrossAlignment.center,
@@ -826,35 +814,46 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
                                   runSpacing: 4,
                                   children: [
                                     if (manualChip != null) manualChip,
-                                    timeBar,
                                     if (pointingPill != null) pointingPill,
                                   ],
                                 ),
-                              const SizedBox(height: 2),
-                              creditLine,
-                            ],
-                          )
-                        : Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (manualChip != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 6),
-                                  child: manualChip,
-                                ),
-                              timeBar,
-                              const SizedBox(height: 6),
-                              if (pointingPill != null) pointingPill,
-                              const SizedBox(height: 3),
-                              creditLine,
-                            ],
-                          ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
+                              ],
+                            ] else
+                              Wrap(
+                                alignment: WrapAlignment.center,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 8,
+                                runSpacing: 4,
+                                children: [
+                                  if (manualChip != null) manualChip,
+                                  timeBar,
+                                  if (pointingPill != null) pointingPill,
+                                ],
+                              ),
+                            const SizedBox(height: 2),
+                            creditLine,
+                          ],
+                        )
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (manualChip != null)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: manualChip,
+                              ),
+                            timeBar,
+                            const SizedBox(height: 6),
+                            if (pointingPill != null) pointingPill,
+                            const SizedBox(height: 3),
+                            creditLine,
+                          ],
+                        ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

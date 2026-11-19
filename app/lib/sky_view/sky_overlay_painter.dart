@@ -284,6 +284,7 @@ class SkySceneRenderer {
     for (var i = 0; i < n; i++) {
       final mag = cat.starMag[i];
       if (mag > limitMag) break; // sorted brightest-first!
+      if (!cat.isVisibleStar(i)) continue;
 
       final vx = cat.starIx[i], vy = cat.starIy[i], vz = cat.starIz[i];
       final z = vx * fwd.x + vy * fwd.y + vz * fwd.z;
@@ -664,6 +665,7 @@ class SkySceneRenderer {
       for (var i = 0; i < cat.starCount; i++) {
         final mag = cat.starMag[i];
         if (mag > limit) break;
+        if (!cat.isVisibleStar(i)) continue;
         final pt = camera.projectIcrs(Vec3(cat.starIx[i], cat.starIy[i], cat.starIz[i]), size);
         if (pt == null) continue;
         final d = (pt - tapPoint).distance;

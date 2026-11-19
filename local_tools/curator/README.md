@@ -1,5 +1,25 @@
 # NightSky local curator
 
+Release preparation adds licence name/URL and modification fields. The launcher
+automatically runs the new database migration. Before exporting an older local
+database, sync its records with the corrected source/credit/object associations in
+`backend/curated_bundle/manifest.json` (match by image filename, not record ID).
+The release audit under `release/` checks hashes and attribution fields; it does not
+grant permission to newly imported images. See `release/remaining-actions.md`.
+
+To apply the reviewed bundle's metadata to existing local records (after making a
+private backup of `curator.sqlite3`), run from the repository root:
+
+```powershell
+$env:ENABLE_CURATOR = '1'
+backend/.venv/Scripts/python.exe local_tools/curator/run.py sync-metadata
+```
+
+This runs migrations, matches by filename, refuses mismatching local/bundled image
+bytes, and updates source/licence/credit/object fields in a transaction. It does not
+add records or replace images. Review local edits before running it. This maintenance
+command has not been run as part of release preparation.
+
 This tool is committed to the repo but never deployed (the Vercel project's root is `backend/`,
 and a root-level `.vercelignore` also excludes it). Its working data stays on your machine and is
 gitignored: the originals in `media/` and the database `curator.sqlite3`. What gets published is

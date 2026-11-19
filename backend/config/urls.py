@@ -1,6 +1,8 @@
 from django.http import JsonResponse
 from django.urls import include, path
 
+from .legal import document
+
 
 def index(request):
     """Health/index so opening the server root in a browser doesn't 404."""
@@ -11,6 +13,10 @@ def index(request):
 
 
 urlpatterns = [
+    path("privacy/", document, {"name": "privacy"}),
+    path("terms/", document, {"name": "terms"}),
+    path("credits/", document, {"name": "credits"}),
+    path("legal/sky_catalog.json", document, {"name": "sky_catalog"}),
     path("", index),
     path("api", index),
     path("api/", index),

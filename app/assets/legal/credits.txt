@@ -1,0 +1,120 @@
+NightSky - Image and Data Credits
+
+NightSky is an independent astronomy app. NASA, ESA, CSA, STScI, CDS and other
+organisations listed as data sources do not sponsor or endorse the app.
+
+Bundled catalogue data
+Stars and constellation figures: d3-celestial, Copyright (c) 2015 Olaf Frohn,
+BSD-3-Clause. Source: https://github.com/ofrohn/d3-celestial
+NightSky converts/subsets upstream data into stars.bin and sky_catalog.json.
+Full BSD terms are available under Settings > Open-source licences.
+
+Deep-sky object catalogue: OpenNGC, Mattia Verga, CC BY-SA 4.0.
+Source: https://github.com/mattiaverga/openngc
+Licence: https://creativecommons.org/licenses/by-sa/4.0/
+NightSky selects, merges and reformats catalogue entries. OpenNGC-derived adapted
+catalogue data is distributed under CC BY-SA 4.0. Other components and third-party
+data retain their own terms. The bundled sky_catalog.json is available on the
+server at /legal/sky_catalog.json after deploying this release preparation.
+
+Proper star names: IAU Working Group on Star Names; astrometry from ESA Hipparcos
+and XHIP through d3-celestial. Geomagnetism: NOAA/NCEI WMM-2025.
+
+Milky Way panorama: Copyright Axel Mellinger (2009, PASP 121, 1180), obtained
+through NASA SkyView and reprojected/split/re-encoded for NightSky.
+
+Online survey cutouts and mosaics
+DSS2 / Digitized Sky Survey via CDS hips2fits and ESA ESASky; Hubble and Webb imagery
+via ESA ESASky/MAST; Mellinger via NASA SkyView. Source-service access alone does not
+grant all redistribution rights. Individual curated image credits and source links follow.
+ESA/Hubble terms: https://esahubble.org/copyright/
+ESA/Webb terms: https://esawebb.org/copyright/
+CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
+NASA terms: https://www.nasa.gov/nasa-brand-center/images-and-media/
+Images may have been resized/re-encoded; survey mosaics are assembled from tiles.
+
+Curated images
+
+Double Cluster: Mårten Frosth
+https://science.nasa.gov/image-detail/double-cluster-in-perseus/
+Licence: unverified third-party copyright
+
+Changes: Resized/re-encoded for display; thumbnails generated. Original transformation history not fully recorded.
+
+Omi Per Cloud: ESA/Webb, NASA, CSA, K. Luhman, C. Alves De Oliveira, M. Zamani (ESA/Webb)
+https://esawebb.org/images/weic2619a/
+Licence: CC BY 4.0
+https://creativecommons.org/licenses/by/4.0/
+Changes: Resized/re-encoded for display; thumbnails generated. Original transformation history not fully recorded.
+
+NGC 6139: ESA/Hubble & NASA
+https://esahubble.org/images/potw1826a/
+Licence: CC BY 4.0
+https://creativecommons.org/licenses/by/4.0/
+Changes: Resized/re-encoded for display; thumbnails generated. Original transformation history not fully recorded.
+
+Andromeda Galaxy: © 2002 R. Gendler, Photo by R. Gendler
+https://esahubble.org/images/heic0512d/
+Licence: CC BY 4.0
+https://creativecommons.org/licenses/by/4.0/
+Changes: Resized/re-encoded for display; thumbnails generated. Original transformation history not fully recorded.
+
+NGC 602: ESA/Webb, NASA & CSA, P. Zeidler, E. Sabbi, A. Nota, M. Zamani (ESA/Webb)
+https://esawebb.org/images/weic2425a/
+Licence: CC BY 4.0
+https://creativecommons.org/licenses/by/4.0/
+Changes: Resized/re-encoded for display; thumbnails generated. Original transformation history not fully recorded.
+
+Great Orion Nebula: NASA, ESA, M. Robberto ( Space Telescope Science Institute/ESA) and the Hubble Space Telescope Orion Treasury Project Team
+https://esahubble.org/images/heic0601a/
+Licence: CC BY 4.0
+https://creativecommons.org/licenses/by/4.0/
+Changes: Resized/re-encoded for display; thumbnails generated. Original transformation history not fully recorded.
+
+Carina Nebula: NASA, ESA, CSA, and STScI, J. DePasquale (STScI)
+https://esawebb.org/images/carinanebula3/
+Licence: CC BY 4.0
+https://creativecommons.org/licenses/by/4.0/
+Changes: Resized/re-encoded for display; thumbnails generated. Original transformation history not fully recorded.
+
+Sombrero Galaxy: NASA, ESA, CSA, STScI
+https://esawebb.org/images/weic2427a/
+Licence: CC BY 4.0
+https://creativecommons.org/licenses/by/4.0/
+Changes: Resized/re-encoded for display; thumbnails generated. Original transformation history not fully recorded.
+
+Messier 92: ESA/Hubble & NASA Acknowledgement: Gilles Chapdelaine
+https://esahubble.org/images/potw1449a/
+Licence: CC BY 4.0
+https://creativecommons.org/licenses/by/4.0/
+Changes: Resized/re-encoded for display; thumbnails generated. Original transformation history not fully recorded.
+
+Red Spider Nebula: ESA/Webb, NASA & CSA, J. H. Kastner (Rochester Institute of Technology)
+https://esawebb.org/images/potm2510a/
+Licence: CC BY 4.0
+https://creativecommons.org/licenses/by/4.0/
+Changes: Resized/re-encoded for display; thumbnails generated. Original transformation history not fully recorded.
+
+Eagle Nebula: NASA, ESA, CSA, STScI, J. DePasquale (STScI), A. Pagan (STScI)
+https://esawebb.org/images/weic2218a/
+Licence: CC BY 4.0
+https://creativecommons.org/licenses/by/4.0/
+Changes: Resized/re-encoded for display; thumbnails generated. Original transformation history not fully recorded.
+
+Ring Nebula: NASA, ESA, and C. Robert O’Dell (Vanderbilt University).
+https://esahubble.org/images/heic1310a/
+Licence: CC BY 4.0
+https://creativecommons.org/licenses/by/4.0/
+Changes: Resized/re-encoded for display; thumbnails generated. Original transformation history not fully recorded.
+
+Ring Nebula: ESA/Webb, NASA, CSA, M. Barlow, N. Cox, R. Wesson
+https://esawebb.org/images/weic2320b/
+Licence: CC BY 4.0
+https://creativecommons.org/licenses/by/4.0/
+Changes: Resized/re-encoded for display; thumbnails generated. Original transformation history not fully recorded.
+
+Helix Nebula: ESO/VISTA/J. Emerson. Acknowledgment: Cambridge Astronomical Survey Unit
+https://www.eso.org/public/images/eso1205a/
+Licence: CC BY 4.0
+https://creativecommons.org/licenses/by/4.0/
+Changes: Cropped/zoomed and re-encoded relative to the linked source; thumbnails generated.
