@@ -1,6 +1,8 @@
 package com.nightsky.night_sky
 
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -25,9 +27,57 @@ import io.flutter.plugin.common.MethodChannel
  * - night_sky/settings: app settings stored as one JSON string in SharedPreferences.
  */
 class MainActivity : FlutterActivity() {
+    private var observingChannel: MethodChannel? = null
+    private var askingPermission: MethodChannel.Result? = null
+
+    override fun onResume() {
+        super.onResume()
+        Observing.restore(this)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        observingChannel?.invokeMethod("destinationReady", null)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 8162) {
+            askingPermission?.success(Observing.permitted(this))
+            askingPermission = null
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
+        observingChannel = MethodChannel(messenger, "night_sky/observing").also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                val id = call.arguments as? String ?: ""
+                when (call.method) {
+                    "destination" -> {
+                        val page = intent.action?.removePrefix("night_sky.open.")
+                        result.success(page?.takeIf { it in listOf("events", "moon", "sky") })
+                        if (intent.action?.startsWith("night_sky.open.") == true) intent.action = null
+                    }
+                    "status" -> result.success(Observing.status(this, id))
+                    "permission" -> {
+                        if (Build.VERSION.SDK_INT >= 33 &&
+                            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                            if (askingPermission != null) result.success(false) else {
+                                askingPermission = result
+                                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 8162)
+                            }
+                        } else result.success(Observing.permitted(this))
+                    }
+                    "schedule" -> result.success(Observing.events(this).find { it.id == id }
+                        ?.let { Observing.schedule(this, it) } ?: false)
+                    "cancel" -> { Observing.cancel(this, id); result.success(null) }
+                    else -> result.notImplemented()
+                }
+            }
+        }
         val sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
 
@@ -66,6 +116,7 @@ class MainActivity : FlutterActivity() {
                 "load" -> result.success(prefs.getString("settings", null))
                 "save" -> {
                     prefs.edit().putString("settings", call.arguments as? String).apply()
+                    Observing.refresh(this)
                     result.success(null)
                 }
                 // Keyed strings for caches (e.g. the curated-highlights index).

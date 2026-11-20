@@ -65,6 +65,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/observing/events.csv
     - assets/legal/
     - assets/sky/mellinger_east.webp
     - assets/sky/mellinger_west.webp

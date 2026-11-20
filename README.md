@@ -4,10 +4,10 @@
 
 Start with [release/README.md](release/README.md) and
 [remaining actions](release/remaining-actions.md). The app now includes bundled legal
-documents, visible source/licence credits and photo-upload consent. Public release
-builds require completed publisher/privacy inputs, image-rights evidence and a real
-signing key; unresolved items deliberately fail the release check. Use debug builds
-for development while the retained images' permissions are resolved.
+documents, visible source/licence credits and photo-upload consent. Publication
+requires completed publisher/privacy inputs and image-rights evidence;
+unresolved items deliberately fail the publication preflight. Local release APKs
+can be built with the configured release signing key while these inputs are pending.
 
 Point your phone at the night sky, take a photo, and NightSky replaces it with a professional
 survey image of the same patch of sky — or switch to **Sky View** to explore a live 3D virtual
@@ -159,15 +159,21 @@ Android rotation-vector convention (device → world ENU; the rear camera looks 
   results are cached.
 
 
-## Pre-release license checklist (important)
-> **Verify Axel Mellinger's license terms before public or commercial release.**
-> Sky View bundles a processed 8192×4096 (8K) WebP copy of Axel Mellinger's All-Sky Milky Way
-> Panorama (`app/assets/sky/mellinger_east.webp` and `mellinger_west.webp`, stitched from the
-> Mellinger survey hosted on NASA SkyView; see Mellinger 2009, *PASP* 121, 1180). While Axel
-> Mellinger permits personal/educational use with credit, shipping the panorama inside a distributed
-> mobile app (especially on app stores or commercially) requires verifying his current
-> redistribution/licensing terms directly with Axel Mellinger prior to release. Credit
-> (`© Axel Mellinger`) is displayed in Sky View's HUD and in the Sky Layers & Credits sheet.
+## Offline observing tools
+
+Open the NightSky menu on the camera screen, or the calendar button in Sky View, for **Observing events** and **Solar system**. An event opens the chart at its UTC instant. Lunar events also select the Moon. Event details show the device's local time and approximate Sun and Moon altitudes for the selected or last saved coordinates. The shower times are predicted global maxima and can shift by hours. The app has no observing-site directory.
+
+The bundled calendar covers all four primary lunar phases for 2025–2030 and four major meteor showers for 2026–2027. Updating coverage requires an app update. The lunar times are USNO public-domain astronomical data. The independently assembled meteor records contain factual names and peak estimates from the International Meteor Organization. [Calendar provenance and update procedure](app/assets/observing/README.md)
+
+**Android reminders** are opt-in per event. Open its details to schedule or cancel the one-hour reminder. Android 13 and later asks for notification permission on opt-in. If notifications are disabled, use Android's notification settings to re-enable them. Inexact alarms can arrive late in battery-saving modes. The app skips expired events and restores outstanding requests on launch, device reboot, app update and clock changes. Android can suspend alarms and widget updates after a force-stop until you reopen NightSky.
+
+**Android widgets** are available from the launcher's widget picker. Moon phase and Next observing event use the same bundled calendar as the app. Astronomical darkness uses the coordinates saved by Sky View. Widgets request updates every 30 minutes through Android's widget service, including when NightSky is closed. Android controls actual refresh times. Settings and system time changes also trigger updates. Taps open the associated app screen. The calendar and explorer work offline on other supported Flutter platforms. Reminders and launcher widgets require Android. No additional package or service is required.
+
+The darkness widget estimates when the geometric center of the Sun is below −18° over the next 24 hours, within 2000–2050. Times use the device timezone. It handles continuous darkness, continuous twilight/daylight and uncertain grazing crossings. Moonlight, weather and terrain are outside this estimate. London reference nights agreed within two minutes, including a daylight-saving transition. Uncertainty increases near polar twilight limits. [USNO solar model](https://aa.usno.navy.mil/faq/sun_approx) · [Twilight definition](https://aa.usno.navy.mil/faq/RST_defs)
+
+The solar-system explorer projects heliocentric positions onto the J2000 ecliptic plane for chart dates 1950–2050. The scale rings measure distance in AU, body symbols are enlarged, and Earth's marker represents the Earth–Moon barycenter. Mercury through Neptune use the existing JPL approximate orbital elements. Select a planet and date to locate it in Sky View. [JPL orbital model](https://ssd.jpl.nasa.gov/planets/approx_pos.html)
+
+
 
 ## Credits & data provenance
 - **Milky Way panorama**: © Axel Mellinger (*PASP* 121, 1180, 2009), retrieved in Galactic `CAR`

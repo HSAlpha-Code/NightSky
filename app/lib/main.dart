@@ -6,16 +6,21 @@ import 'curated.dart';
 import 'screens/camera_screen.dart';
 import 'settings.dart';
 import 'legal_notices.dart';
+import 'observing.dart';
+import 'screens/events_screen.dart';
+import 'screens/sky_view_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   registerDataLicences();
   await SystemChrome.setPreferredOrientations(ScreenOrientationMode.auto.orientations);
-  runApp(const ProviderScope(child: NightSkyApp()));
+  final page = androidObserving ? await observingChannel.invokeMethod<String>('destination') : null;
+  runApp(ProviderScope(child: NightSkyApp(initialPage: page)));
 }
 
 class NightSkyApp extends ConsumerWidget {
-  const NightSkyApp({super.key});
+  const NightSkyApp({super.key, this.initialPage});
+  final String? initialPage;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -23,7 +28,7 @@ class NightSkyApp extends ConsumerWidget {
     return NightSkyAppShell(
       home: restored.isLoading
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-          : const CameraScreen(),
+          : _destination(initialPage) ?? const CameraScreen(),
     );
   }
 }
@@ -40,10 +45,35 @@ class NightSkyAppShell extends ConsumerStatefulWidget {
 }
 
 class _NightSkyAppShellState extends ConsumerState<NightSkyAppShell> {
+  final navigator = GlobalKey<NavigatorState>();
+
   @override
   void initState() {
     super.initState();
+    if (androidObserving) {
+      observingChannel.setMethodCallHandler((call) async {
+        if (call.method == 'destinationReady') await _openPending();
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openPending());
+    }
     SystemChrome.setPreferredOrientations(ref.read(settingsProvider).orientationMode.orientations);
+  }
+
+  Future<void> _openPending() async {
+    try {
+      final page = _destination(await observingChannel.invokeMethod<String>('destination'));
+      if (mounted && page != null) {
+        navigator.currentState?.push(MaterialPageRoute<void>(builder: (_) => page));
+      }
+    } on MissingPluginException {
+      // Embedders without the Android integration have no widget launch intent.
+    }
+  }
+
+  @override
+  void dispose() {
+    if (androidObserving) observingChannel.setMethodCallHandler(null);
+    super.dispose();
   }
 
   @override
@@ -61,6 +91,7 @@ class _NightSkyAppShellState extends ConsumerState<NightSkyAppShell> {
     // server address changes). Never blocks anything; failures are silent.
     ref.listen(curatedIndexProvider, (_, _) {});
     return MaterialApp(
+      navigatorKey: navigator,
       title: 'NightSky',
       debugShowCheckedModeBanner: false,
       // The app's font size setting multiplies the phone's own text size.
@@ -84,3 +115,10 @@ class _NightSkyAppShellState extends ConsumerState<NightSkyAppShell> {
     );
   }
 }
+
+Widget? _destination(String? page) => switch (page) {
+  'events' => const EventsScreen(),
+  'moon' => const EventsScreen(moonOnly: true),
+  'sky' => const SkyViewScreen(),
+  _ => null,
+};

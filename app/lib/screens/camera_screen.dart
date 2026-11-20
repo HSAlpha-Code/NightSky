@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../models.dart';
+import 'events_screen.dart';
+import 'solar_system_screen.dart';
 import '../sensors.dart';
 import '../settings.dart';
 import '../sky_math.dart';
@@ -357,12 +359,18 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           ? const EdgeInsets.fromLTRB(16, 4, 8, 6)
           : const EdgeInsets.fromLTRB(20, 8, 12, 12),
       child: Row(children: [
-        const Icon(Icons.auto_awesome, color: Colors.white, size: 22),
-        const SizedBox(width: 8),
-        Text(
-          'NightSky',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: Colors.white, fontWeight: FontWeight.w600, letterSpacing: 0.5),
+        Flexible(
+          child: PopupMenuButton<String>(
+            tooltip: 'Observing events and solar system',
+            onSelected: (page) => _openObservingPage(page == 'events'
+                ? const EventsScreen() : const SolarSystemScreen()),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'events', child: Text('Observing events')),
+              PopupMenuItem(value: 'solar', child: Text('Solar system')),
+            ],
+            child: const Padding(padding: EdgeInsets.symmetric(vertical:12),
+              child: Text('NightSky ▾', overflow: TextOverflow.ellipsis)),
+          ),
         ),
         const Spacer(),
         ModeSwitchPill(
@@ -473,14 +481,16 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     return banners;
   }
 
-  Future<void> _openSkyView() async {
+  Future<void> _openSkyView() => _openObservingPage(const SkyViewScreen(openedFromCamera: true));
+
+  Future<void> _openObservingPage(Widget page) async {
     final c = _controller;
     _controller = null;
     await c?.dispose();
     if (!mounted) return;
     setState(() {});
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const SkyViewScreen(openedFromCamera: true)),
+      MaterialPageRoute<void>(builder: (_) => page),
     );
     if (mounted && _controller == null) {
       unawaited(_initCamera());

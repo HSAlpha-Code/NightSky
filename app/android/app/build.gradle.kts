@@ -66,6 +66,11 @@ val verifyReleaseReadiness by tasks.registering(Exec::class) {
     description = "Block public builds with unresolved legal/privacy release inputs."
     workingDir(rootProject.projectDir.resolve("../.."))
     commandLine("python", "tools/release.py", "check", "--for-build")
+}
+
+val verifyReleaseSigning by tasks.registering {
+    group = "verification"
+    description = "Require the configured release key for signed release artifacts."
     doFirst {
         check(hasReleaseKey) {
             "Release key missing. Configure android/key.properties; debug signing is prohibited."
@@ -80,5 +85,5 @@ val verifyReleaseReadiness by tasks.registering(Exec::class) {
 }
 
 tasks.configureEach {
-    if (name == "preReleaseBuild") dependsOn(verifyReleaseReadiness)
+    if (name == "preReleaseBuild") dependsOn(verifyReleaseSigning)
 }

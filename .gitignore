@@ -35,7 +35,7 @@ app/android/key.properties.*
 backend/staticfiles/
 .vercel/
 .idea/
-
+.vscode
 # Curator tool (local_tools/curator) is tracked; only its working data stays local.
 local_tools/curator/media/
 local_tools/curator/*.sqlite3
@@ -51,6 +51,8 @@ local_tools/curator/*.sqlite3.*
 # Keep release guides, rights registers and shipped legal documents tracked.
 # Store private permission correspondence/signing backups in these local folders.
 release/
+tools/
+
 
 # Local logs and operating-system metadata.
 *.log

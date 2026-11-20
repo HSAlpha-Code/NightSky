@@ -155,6 +155,25 @@ const List<_PlanetElements> _planets = [
   ),
 ];
 
+/// Geometric heliocentric position in AU in the J2000 ecliptic frame.
+/// The Earth elements describe the Earth–Moon barycenter.
+typedef OrbitalBody = ({String id, String name, Color color, Vec3 position});
+
+List<OrbitalBody> heliocentricBodies(DateTime when) {
+  final t = julianCenturiesJ2000(when);
+  OrbitalBody body(_PlanetElements p) => (
+    id: p.id, name: p.name, color: p.color,
+    position: _heliocentricEclipticJ2000(p, t),
+  );
+  return [
+    (id: 'SOL-SUN', name: 'Sun', color: const Color(0xFFFFD56A), position: Vec3.zero),
+    for (final p in _planets) ...[
+      if (p.id == 'SOL-MARS') body(_earthElements),
+      body(p),
+    ],
+  ];
+}
+
 /// Complete Solar System snapshot for a given time and observer location.
 class SolarSystemSnapshot {
   const SolarSystemSnapshot({

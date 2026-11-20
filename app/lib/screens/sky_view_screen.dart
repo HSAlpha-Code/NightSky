@@ -21,6 +21,8 @@ import '../widgets/camera_hints.dart';
 import '../widgets/glass.dart';
 import 'camera_screen.dart';
 import 'settings_screen.dart';
+import 'events_screen.dart';
+import 'solar_system_screen.dart';
 
 /// 3D virtual night sky driven by orientation sensors (with manual touch drag fallback),
 /// backed offline by Axel Mellinger's Milky Way panorama, 8,874 stars, 88 constellations,
@@ -34,6 +36,7 @@ class SkyViewScreen extends ConsumerStatefulWidget {
     this.initialAzDeg = 180.0,
     this.initialRollDeg = 0.0,
     this.initialUtc,
+    this.initialBodyId,
     this.orientationTracker,
   });
 
@@ -43,6 +46,7 @@ class SkyViewScreen extends ConsumerStatefulWidget {
   final double initialAzDeg;
   final double initialRollDeg;
   final DateTime? initialUtc;
+  final String? initialBodyId;
 
   /// Optional tracker injected by tests to simulate live compass/gyro streams cleanly.
   final OrientationTracker? orientationTracker;
@@ -286,6 +290,18 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
       return _cachedSolar!;
     }
     final snap = computeSolarSystem(when: utc, latitudeDeg: lat, longitudeDeg: lon);
+    if (_cachedSolar == null && widget.initialBodyId != null) {
+      final target = snap.allBodies.where((b) => b.id == widget.initialBodyId).firstOrNull;
+      if (target != null) {
+        final hor = raDecToAltAz(raDeg: target.raDeg, decDeg: target.decDeg,
+            latitudeDeg: lat, longitudeDeg: lon, when: utc);
+        _manualMode = true;
+        _manualAltDeg = hor.altitudeDeg.clamp(-89.5, 89.5);
+        _manualAzDeg = hor.azimuthDeg;
+        _selectedObject = target;
+        _guideTarget = target;
+      }
+    }
     _cachedSolar = snap;
     _cachedSolarTime = utc;
     _cachedSolarLat = lat;
@@ -763,6 +779,20 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
                       ),
 
                       // Active "Find object" directional guide banner.
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: PopupMenuButton<String>(
+                          tooltip: 'Observing events and solar system',
+                          icon: const Icon(Icons.calendar_month_outlined),
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(value: 'events', child: Text('Observing events')),
+                            PopupMenuItem(value: 'solar', child: Text('Solar system')),
+                          ],
+                          onSelected: (page) => Navigator.push(context, MaterialPageRoute<void>(
+                            builder: (_) => page == 'events' ? const EventsScreen() : SolarSystemScreen(initialUtc: skyUtc),
+                          )),
+                        ),
+                      ),
                       if (_guideTarget != null && guideInfo != null)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
