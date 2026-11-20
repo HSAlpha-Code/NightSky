@@ -543,7 +543,7 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
     final settings = ref.watch(settingsProvider);
     final layers = ref.watch(skyLayersProvider);
     final panorama = ref.watch(skyPanoramaProvider);
-    final panoramaPack = ref.watch(panoramaPacksProvider);
+    final panoramaResolution = ref.watch(panoramaPacksProvider.select((s) => s.active));
     final tileCache = ref.watch(panoramaTileCacheProvider);
     final shaderProgram = ref.watch(skyShaderProgramProvider).value;
     final catalog = ref.watch(skyCatalogProvider).value;
@@ -580,7 +580,7 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
             constraints.maxHeight > 0 ? constraints.maxHeight : 640.0,
           );
           final insets = MediaQuery.paddingOf(context);
-          tileCache.updateView(panoramaPack.active, camera, viewSize,
+          tileCache.updateView(panoramaResolution, camera, viewSize,
               layers.milkyWay && shaderProgram != null);
           final isLandscape = viewSize.width > viewSize.height;
           final guideInfo = _guideTarget == null
@@ -669,7 +669,7 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
             onScaleUpdate: (details) {
               setState(() {
                 if (details.pointerCount >= 2) {
-                  _fovDeg = (_pinchBaseFov / details.scale).clamp(20.0, 95.0);
+                  _fovDeg = (_pinchBaseFov / details.scale).clamp(SkyCamera.minFovDeg, 95.0);
                 } else if (_lastFocalPoint != null) {
                   final delta = details.localFocalPoint - _lastFocalPoint!;
                   if (delta.distance > 0.5) {

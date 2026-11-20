@@ -150,6 +150,50 @@ void main() {
     await tester.pump(const Duration(milliseconds: 20));
   });
 
+  testWidgets('pinch zoom reaches 2 degrees in Sky View', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final c = makeContainer();
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: c,
+        child: const MaterialApp(home: SkyViewScreen(initialManualMode: true)),
+      ),
+    );
+    await tester.pump();
+    const center = Offset(180, 400);
+    for (var cycle = 0; cycle < 3; cycle++) {
+      final left = await tester.startGesture(
+        center - const Offset(20, 0),
+        pointer: 1,
+      );
+      final right = await tester.startGesture(
+        center + const Offset(20, 0),
+        pointer: 2,
+      );
+      await tester.pump();
+      for (var step = 1; step <= 8; step++) {
+        final span = 20.0 + step * 16;
+        await left.moveTo(center - Offset(span, 0));
+        await right.moveTo(center + Offset(span, 0));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await left.up();
+      await right.up();
+      await tester.pump();
+    }
+    final paint = tester.widget<CustomPaint>(
+      find.byWidgetPredicate(
+        (widget) => widget is CustomPaint && widget.painter is SkySpherePainter,
+      ),
+    );
+    expect(
+      (paint.painter! as SkySpherePainter).camera.fovDeg,
+      SkyCamera.minFovDeg,
+    );
+  });
+
   testWidgets('manual observer location picker saves preset offline', (tester) async {
     final store = MemorySettingsStore();
     final c = makeContainer(settingsStore: store);

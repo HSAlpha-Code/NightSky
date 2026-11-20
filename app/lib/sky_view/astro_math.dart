@@ -411,6 +411,8 @@ double magneticDeclinationDeg({
 /// Complete 3D viewing state for one rendered Sky View frame.
 @immutable
 class SkyCamera {
+  static const minFovDeg = 2.0;
+  static const maxFovDeg = 110.0;
   SkyCamera._({
     required this.forwardEnu,
     required this.rightEnu,
@@ -424,7 +426,7 @@ class SkyCamera {
         rightIcrs = enuToIcrs.transform(rightEnu).normalized,
         upIcrs = enuToIcrs.transform(upEnu).normalized,
         zenithIcrs = enuToIcrs.transform(Vec3.up).normalized,
-        tanHalfFov = math.tan((fovDeg.clamp(15.0, 110.0) * 0.5) * degToRad) {
+        tanHalfFov = math.tan((fovDeg.clamp(minFovDeg, maxFovDeg) * 0.5) * degToRad) {
     forwardGal = icrsToGalacticMatrix.transform(forwardIcrs).normalized;
     rightGal = icrsToGalacticMatrix.transform(rightIcrs).normalized;
     upGal = icrsToGalacticMatrix.transform(upIcrs).normalized;

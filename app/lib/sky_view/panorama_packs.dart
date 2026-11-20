@@ -7,7 +7,14 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../settings.dart';
+import 'panorama_background.dart';
+
+/// Versioned public release assets; independent of the user's API server.
+const panoramaReleaseUrl =
+    'https://github.com/HSAlpha-Code/NightSky/releases/download/panorama-nasa2020-v1';
+
+String panoramaAssetUrl(PanoramaResolution resolution, String filename) =>
+    '$panoramaReleaseUrl/nasa2020-${resolution.k}k-$filename';
 
 enum PanoramaResolution {
   eightK(8),
@@ -74,12 +81,14 @@ class PanoramaPackState {
     this.downloading,
     this.progress = 0,
     this.error,
+    this.downloadMessage,
   });
   final PanoramaResolution active;
   final Set<PanoramaResolution> installed;
   final PanoramaResolution? downloading;
   final double progress;
   final String? error;
+  final String? downloadMessage;
 }
 
 final panoramaDirectoryProvider = Provider<Future<Directory>>((ref) async {
@@ -98,12 +107,88 @@ final panoramaDioProvider = Provider<Dio>(
 class PanoramaPacksNotifier extends Notifier<PanoramaPackState> {
   CancelToken? _cancel;
   int _choiceGeneration = 0;
+  Timer? _backgroundPoll;
+  bool _polling = false;
+  bool _startingBackground = false;
+  String? _handledJob;
+  late final PanoramaBackgroundDownloader? _background;
 
   @override
   PanoramaPackState build() {
-    ref.onDispose(() => _cancel?.cancel());
-    unawaited(_restore());
+    _background = ref.read(panoramaBackgroundDownloaderProvider);
+    ref.onDispose(() {
+      _cancel?.cancel();
+      _backgroundPoll?.cancel();
+    });
+    unawaited(_initialize());
     return const PanoramaPackState();
+  }
+
+  Future<void> _initialize() async {
+    await _restore();
+    if (ref.mounted && _background != null) await _syncBackground();
+  }
+
+  void _watchBackground() {
+    _backgroundPoll ??= Timer.periodic(const Duration(milliseconds: 750), (_) {
+      if (ref.mounted) unawaited(_syncBackground());
+    });
+  }
+
+  Future<void> _syncBackground() async {
+    if (_polling || _startingBackground || _background == null) return;
+    _polling = true;
+    final generation = _choiceGeneration;
+    try {
+      final job = await _background.status();
+      if (!ref.mounted ||
+          generation != _choiceGeneration ||
+          job == null ||
+          job['id'] == _handledJob) {
+        return;
+      }
+      final resolution = PanoramaResolution.values
+          .where((r) => r.k == job['resolution'])
+          .firstOrNull;
+      if (resolution == null || resolution == PanoramaResolution.eightK) return;
+      final status = job['status'];
+      if (status == 'RUNNING' || status == 'ENQUEUED' || status == 'BLOCKED') {
+        state = PanoramaPackState(
+          active: state.active,
+          installed: state.installed,
+          downloading: resolution,
+          progress: ((job['progress'] as num?)?.toDouble() ?? 0).clamp(0, 1),
+          downloadMessage: status == 'RUNNING'
+              ? 'Downloading in background'
+              : 'Download queued — waiting for network or Android',
+        );
+        _watchBackground();
+      } else {
+        _handledJob = job['id'] as String?;
+        _backgroundPoll?.cancel();
+        _backgroundPoll = null;
+        if (status == 'SUCCEEDED') {
+          state = PanoramaPackState(
+            active: state.active,
+            installed: state.installed,
+          );
+          await _restore();
+        } else {
+          state = PanoramaPackState(
+            active: state.active,
+            installed: state.installed,
+            error: status == 'CANCELLED'
+                ? 'Download cancelled. Tap Download to resume.'
+                : (job['error'] as String? ??
+                      'Download failed. Check your connection and storage, then retry.'),
+          );
+        }
+      }
+    } catch (_) {
+      // Keep watching OS-owned work through a temporary activity/channel interruption.
+    } finally {
+      _polling = false;
+    }
   }
 
   Future<Directory> folder(PanoramaResolution r) async {
@@ -165,6 +250,7 @@ class PanoramaPacksNotifier extends Notifier<PanoramaPackState> {
       installed: state.installed,
       downloading: state.downloading,
       progress: state.progress,
+      downloadMessage: state.downloadMessage,
     );
     try {
       final root = await ref.read(panoramaDirectoryProvider);
@@ -176,7 +262,19 @@ class PanoramaPacksNotifier extends Notifier<PanoramaPackState> {
     }
   }
 
-  void cancel() => _cancel?.cancel('Cancelled');
+  void cancel() {
+    _cancel?.cancel('Cancelled');
+    if (_background != null) unawaited(_cancelBackground());
+  }
+
+  Future<void> _cancelBackground() async {
+    try {
+      await _background!.cancel();
+      await _syncBackground();
+    } catch (_) {
+      /* The next poll reconnects if the activity is recreating. */
+    }
+  }
 
   Future<bool> _matches(File file, Map<String, dynamic> tile) async {
     return await file.exists() &&
@@ -196,44 +294,72 @@ class PanoramaPacksNotifier extends Notifier<PanoramaPackState> {
       downloading: resolution,
     );
     try {
+      if (_background != null) {
+        _startingBackground = true;
+        try {
+          final root = await ref.read(panoramaDirectoryProvider);
+          await _background.start(resolution.k, root.path);
+        } finally {
+          _startingBackground = false;
+        }
+        if (!ref.mounted) return;
+        _handledJob = null;
+        _watchBackground();
+        await _syncBackground();
+        return;
+      }
       final dir = await folder(resolution);
       await dir.create(recursive: true);
-      final base = ref.read(settingsProvider).serverUrl ?? defaultServerUrl;
-      final origin = base.replaceFirst(RegExp(r'/(?:api)?/?$'), '');
-      final url = '$origin/api/panorama/nasa2020-v1/${resolution.k}k';
       final dio = ref.read(panoramaDioProvider);
       final response = await dio.get<String>(
-        '$url/manifest.json',
+        panoramaAssetUrl(resolution, 'manifest.json'),
         cancelToken: token,
         options: Options(responseType: ResponseType.plain),
       );
       final json = jsonDecode(response.data!) as Map<String, dynamic>;
       final pack = PanoramaPack(resolution, json);
       var completed = 0;
-      for (final tile in pack.tiles.values) {
+      var nextTile = 0;
+      Object? failure;
+      StackTrace? failureStack;
+      final tiles = pack.tiles.values.toList();
+      final receivedByTile = <String, int>{};
+      void updateProgress() {
+        if (!ref.mounted) return;
+        final received = receivedByTile.values.fold(
+          0,
+          (sum, bytes) => sum + bytes,
+        );
+        state = PanoramaPackState(
+          active: state.active,
+          installed: state.installed,
+          downloading: resolution,
+          progress: ((completed + received) / pack.bytes).clamp(0, 1),
+        );
+      }
+
+      Future<void> downloadTile(Map<String, dynamic> tile) async {
         if (token.isCancelled) throw token.cancelError!;
         final file = File('${dir.path}/${tile['file']}');
         if (!await _matches(file, tile)) {
           final temporary = File('${file.path}.part');
           try {
             await dio.download(
-              '$url/${tile['file']}',
+              panoramaAssetUrl(resolution, tile['file'] as String),
               temporary.path,
               cancelToken: token,
               onReceiveProgress: (received, total) {
-                if (ref.mounted) {
-                  state = PanoramaPackState(
-                    active: state.active,
-                    installed: state.installed,
-                    downloading: resolution,
-                    progress: ((completed + received) / pack.bytes).clamp(0, 1),
-                  );
-                }
+                receivedByTile[tile['file'] as String] = received.clamp(
+                  0,
+                  tile['bytes'] as int,
+                );
+                updateProgress();
               },
             );
             if (!await _matches(temporary, tile)) {
               throw const FormatException('Download checksum mismatch');
             }
+            if (token.isCancelled) throw token.cancelError!;
             if (await file.exists()) await file.delete();
             await temporary.rename(file.path);
           } finally {
@@ -241,7 +367,25 @@ class PanoramaPacksNotifier extends Notifier<PanoramaPackState> {
           }
         }
         completed += tile['bytes'] as int;
+        receivedByTile.remove(tile['file']);
+        updateProgress();
       }
+
+      Future<void> worker() async {
+        while (failure == null && nextTile < tiles.length) {
+          final tile = tiles[nextTile++];
+          try {
+            await downloadTile(tile);
+          } catch (error, stack) {
+            failure ??= error;
+            failureStack ??= stack;
+            token.cancel('Download worker stopped');
+          }
+        }
+      }
+
+      await Future.wait(List.generate(4, (_) => worker()));
+      if (failure != null) Error.throwWithStackTrace(failure!, failureStack!);
       if (token.isCancelled) throw token.cancelError!;
       final manifest = File('${dir.path}/manifest.json.part');
       await manifest.writeAsString(jsonEncode(json), flush: true);

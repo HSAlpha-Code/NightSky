@@ -26,16 +26,18 @@ representation: linear half-float RGB is converted to 8-bit sRGB, with negative
 values clamped to zero and highlights above display white clipped.
 
 Generate with `python app/tool/sky_data/prepare_nasa.py` and
-`python app/tool/sky_data/prepare_nasa.py --packs`. Deploy this directory with the
-backend before offering the optional packs. The original EXRs are cached outside
+`python app/tool/sky_data/prepare_nasa.py --packs`. Prepare GitHub release assets with
+`python app/tool/sky_data/publish_panorama.py` and publish with its `--publish` option. The original EXRs are cached outside
 the repository; they are not included in the app. The app ships only the 8K map.
 Other catalogs, constellation figures and imagery retain their separate terms.
 
 Online NASA cutouts use a perspective reprojection of the 8K map and lossless PNG encoding.
 
-Vercel serves the optional packs from its static CDN after collectstatic, with a rewrite
-from the versioned API paths. The 16K/32K files are excluded from the Python function bundle.
-Self-hosted Django serves the same paths directly from panorama_packs.
+Optional packs are delivered directly from the public GitHub release:
+https://github.com/HSAlpha-Code/NightSky/releases/tag/panorama-nasa2020-v1
+Both packs are excluded from Vercel source uploads and function bundles. The API server
+setting does not affect panorama downloads. Self-hosted Django retains its local file routes
+for development, but the app uses GitHub Releases.
 
 Lossless payload sizes (excluding small manifests): included 8K 34,837,846 bytes
 (33.2 MiB); optional 16K 107,421,670 bytes (102.4 MiB); optional 32K 366,526,918

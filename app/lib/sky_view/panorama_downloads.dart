@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'panorama_packs.dart';
+import 'panorama_background.dart';
 
 class PanoramaDownloads extends ConsumerWidget {
   const PanoramaDownloads({super.key});
@@ -10,6 +11,8 @@ class PanoramaDownloads extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(panoramaPacksProvider);
     final notifier = ref.read(panoramaPacksProvider.notifier);
+    final backgroundEnabled =
+        ref.watch(panoramaBackgroundDownloaderProvider) != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -23,6 +26,11 @@ class PanoramaDownloads extends ConsumerWidget {
           'for more detail when zooming in. Installed maps work offline. '
           'Higher resolutions use more storage and memory. Wi-Fi recommended.',
         ),
+        if (backgroundEnabled)
+          const Text(
+            'Downloads continue when you switch apps. Allow notifications '
+            'to see progress and cancel from the notification.',
+          ),
         for (final r in PanoramaResolution.values)
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -74,6 +82,11 @@ class PanoramaDownloads extends ConsumerWidget {
               ),
             ],
           ),
+          if (state.downloadMessage != null)
+            Text(
+              state.downloadMessage!,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
         ],
         if (state.error != null)
           Text(

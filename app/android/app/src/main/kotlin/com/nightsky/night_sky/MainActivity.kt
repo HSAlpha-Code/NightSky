@@ -29,6 +29,13 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private var observingChannel: MethodChannel? = null
     private var askingPermission: MethodChannel.Result? = null
+    private var askingDownloadPermission: MethodChannel.Result? = null
+    private val panoramaCalls = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    override fun onDestroy() {
+        panoramaCalls.shutdownNow()
+        super.onDestroy()
+    }
 
     override fun onResume() {
         super.onResume()
@@ -47,11 +54,41 @@ class MainActivity : FlutterActivity() {
             askingPermission?.success(Observing.permitted(this))
             askingPermission = null
         }
+        if (requestCode == 8163) {
+            askingDownloadPermission?.success(grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
+            askingDownloadPermission = null
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
+        MethodChannel(messenger, "night_sky/panorama_downloads").setMethodCallHandler { call, result ->
+            if (call.method == "permission") {
+                if (Build.VERSION.SDK_INT >= 33 &&
+                    checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    if (askingDownloadPermission != null || askingPermission != null) result.success(false) else {
+                        askingDownloadPermission = result
+                        requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 8163)
+                    }
+                } else result.success(true)
+                return@setMethodCallHandler
+            }
+            panoramaCalls.execute {
+                try {
+                    val value = when (call.method) {
+                        "start" -> PanoramaWorker.start(applicationContext,
+                            call.argument<Int>("resolution") ?: 0, call.argument<String>("directory") ?: "")
+                        "status" -> PanoramaWorker.status(applicationContext)
+                        "cancel" -> { PanoramaWorker.cancel(applicationContext); null }
+                        else -> { runOnUiThread { result.notImplemented() }; return@execute }
+                    }
+                    runOnUiThread { result.success(value) }
+                } catch (_: Exception) {
+                    runOnUiThread { result.error("PANORAMA_DOWNLOAD", "Could not update background download", null) }
+                }
+            }
+        }
         observingChannel = MethodChannel(messenger, "night_sky/observing").also { channel ->
             channel.setMethodCallHandler { call, result ->
                 val id = call.arguments as? String ?: ""

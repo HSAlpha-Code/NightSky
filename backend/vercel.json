@@ -1,12 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["fra1"],
-  "rewrites": [
-    {
-      "source": "/api/panorama/nasa2020-v1/:path*",
-      "destination": "/static/panorama/nasa2020-v1/:path*"
-    }
-  ],
   "functions": {
     "config/wsgi.py": {
       "maxDuration": 300,

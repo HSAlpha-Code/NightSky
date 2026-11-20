@@ -227,6 +227,33 @@ void main() {
       expect(guide.onScreen, isNull);
     });
 
+    test(
+      'deep zoom reaches a real 2 degree projection and keeps picking aligned',
+      () {
+        final camera = SkyCamera.fromAltAz(
+          altitudeDeg: 35,
+          azimuthDeg: 180,
+          latitudeDeg: 40,
+          longitudeDeg: -74,
+          when: DateTime.utc(2026, 11, 20),
+          fovDeg: 2,
+        );
+        const size = Size(400, 800);
+        expect(camera.horizontalFovDeg(size), closeTo(2, 1e-9));
+        for (final point in [
+          const Offset(30, 30),
+          const Offset(200, 400),
+          const Offset(370, 770),
+        ]) {
+          final projected = camera.projectIcrs(
+            camera.unprojectToIcrs(point, size),
+            size,
+          )!;
+          expect((projected - point).distance, lessThan(1e-5));
+        }
+      },
+    );
+
     test('landscape SkyCamera aligns sensor axes for 90°/270° and preserves roll in manual mode',
         () {
       // Build device->world quaternion for a phone aimed at (altDeg, azDeg) and rolled around its

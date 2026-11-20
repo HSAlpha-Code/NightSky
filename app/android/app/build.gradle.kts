@@ -61,6 +61,11 @@ flutter {
     source = "../.."
 }
 
+dependencies {
+    implementation("androidx.work:work-runtime:2.11.2")
+    testImplementation("junit:junit:4.13.2")
+}
+
 val verifyReleaseReadiness by tasks.registering(Exec::class) {
     group = "verification"
     description = "Block public builds with unresolved legal/privacy release inputs."

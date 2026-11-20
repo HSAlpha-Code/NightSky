@@ -1,14 +1,5 @@
 # NightSky
 
-## Google Play release preparation
-
-Start with [release/README.md](release/README.md) and
-[remaining actions](release/remaining-actions.md). The app now includes bundled legal
-documents, visible source/licence credits and photo-upload consent. Publication
-requires completed publisher/privacy inputs and image-rights evidence;
-unresolved items deliberately fail the publication preflight. Local release APKs
-can be built with the configured release signing key while these inputs are pending.
-
 Point your phone at the night sky, take a photo, and NightSky replaces it with a professional
 survey image of the same patch of sky — or switch to **Sky View** to explore a live 3D virtual
 night sky driven by the phone's orientation sensors, with no camera or internet connection needed.
@@ -59,19 +50,30 @@ Highlights, or a close-up from Hubble, JWST or any survey.
 - **Optional 16K and 32K maps**: Install under Settings or Sky Layers & Display > Panorama
   resolution. Downloads are verified with SHA-256, resume completed tiles after interruption,
   persist offline, and can be removed independently. Selecting 8K always uses the bundled map.
+  Downloads use four simultaneous tile transfers with aggregate progress. Android uses
+  WorkManager foreground work with a progress/cancel notification, network/storage constraints
+  and bounded automatic retries. Switching apps or recreating the activity keeps the job running;
+  reopening reconnects to its progress. Verified completed tiles survive interrupted attempts.
+  Explicit Android Force stop stops background work until the app is reopened; other platforms
+  currently use the parallel foreground downloader.
   All three resolutions use lossless WebP, verified pixel-for-pixel after converting NASA's
   linear HDR EXRs to display sRGB8. Native dimensions are preserved; the display conversion
   clips HDR highlights and is distinct from lossless compression.
-  A bounded cache decodes visible 2048-pixel tiles; the 8K map fills tiles still loading or
-  outside the memory budget. These maps add native detail when zoomed in.
+  A bounded LRU cache prefetches neighboring tiles. Complete visible regions fade in together
+  instead of appearing as rectangular chunks. Wide views use smaller decoded GPU textures
+  within a roughly 256 MiB tile budget; zoomed views restore the native 2048-pixel tile cores.
+  Lossless downloaded files remain unchanged. Pinch zoom now reaches a 2-degree field of view
+  (previously 20 degrees), with matching camera projection and picking.
   The fragment shader applies the same orientation, horizon shading and night vision at every
   resolution. Backends without custom shader support retain the bundled 8K mesh fallback.
 - To prepare optional server packs: `python app/tool/sky_data/prepare_nasa.py --packs`
   (requires OpenEXR, numpy and Pillow; 8K preparation also requires OpenCV).
-  Deploy `backend/panorama_packs/` with the backend; its versioned
-  `/api/panorama/nasa2020-v1/{16k,32k}/manifest.json` endpoints deliver the packs.
-  Builds of the app include only the 8K assets. Backend changes and packs must be deployed
-  before downloads are available on the production server.
+  Prepare and validate release assets with `python app/tool/sky_data/publish_panorama.py`.
+  Publish with `python app/tool/sky_data/publish_panorama.py --publish`, using GitHub credentials
+  from `GH_TOKEN`, `GITHUB_TOKEN`, or Git's credential helper. The publisher verifies all tiles,
+  uploads a draft release, checks uploaded assets, and publishes once complete. Existing public
+  assets are immutable. Use a new tag and update the app URLs for new pack versions.
+  Builds include only 8K; optional downloads use public GitHub release URLs without an API token.
 - To regenerate the bundled Sky View assets from upstream sources:
   `python app/tool/sky_data/prepare_nasa.py` and `python app/tool/sky_data/prepare_catalogs.py`.
 
@@ -212,6 +214,8 @@ The solar-system explorer projects heliocentric positions onto the J2000 eclipti
   hips2fits, NASA SkyView and STScI; Hubble and JWST data (NASA/ESA/CSA) via ESA ESASky and MAST.
   Full per-asset details are recorded in `app/assets/sky/SOURCES.md`.
 
-Vercel serves the optional packs from its static CDN after collectstatic, with a rewrite
-from the versioned API paths. The 16K/32K files are excluded from the Python function bundle.
-Self-hosted Django serves the same paths directly from panorama_packs.
+Optional packs are delivered directly from the public GitHub release:
+https://github.com/HSAlpha-Code/NightSky/releases/tag/panorama-nasa2020-v1
+Both packs are excluded from Vercel source uploads and function bundles. The API server
+setting does not affect panorama downloads. Self-hosted Django retains its local file routes
+for development, but the app uses GitHub Releases.

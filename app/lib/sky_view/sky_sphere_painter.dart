@@ -66,7 +66,15 @@ class SkySpherePainter extends CustomPainter {
       if (shaderProgram != null) {
         _paintWithShader(canvas, size, pano, shaderProgram!);
         final cache = tileCache;
-        if (cache != null) {
+        if (cache != null && cache.opacity > 0) {
+          // Composite a complete viewport in one fade, never independent rectangles.
+          final fading = cache.opacity < 1;
+          if (fading) {
+            canvas.saveLayer(
+              Offset.zero & size,
+              Paint()..color = Color.fromRGBO(255, 255, 255, cache.opacity),
+            );
+          }
           for (final tile in cache.images.entries) {
             final clip = cache.clips[tile.key];
             if (clip == null || clip.isEmpty) continue;
@@ -84,6 +92,7 @@ class SkySpherePainter extends CustomPainter {
             );
             canvas.restore();
           }
+          if (fading) canvas.restore();
         }
       } else {
         _paintWithMeshFallback(canvas, size, pano);
@@ -146,8 +155,9 @@ class SkySpherePainter extends CustomPainter {
       i++,
       tile == null ? 0 : tileCache!.resolution.rows.toDouble(),
     );
-    shader.setFloat(i++, 2048);
-    shader.setFloat(i++, 1);
+    final tileScale = tile == null ? 1.0 : tile.width / 2050.0;
+    shader.setFloat(i++, 2048 * tileScale);
+    shader.setFloat(i++, tileScale);
 
     shader.setImageSampler(0, tile ?? pano.east);
     shader.setImageSampler(1, tile ?? pano.west);

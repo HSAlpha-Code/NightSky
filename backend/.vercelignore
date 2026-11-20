@@ -9,3 +9,6 @@ __pycache__/
 *.pyc
 **/tests.py
 **/test_*.py
+# Optional panorama downloads live on GitHub Releases, outside Vercel uploads.
+panorama_packs/16k/
+panorama_packs/32k/

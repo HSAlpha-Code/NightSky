@@ -29,9 +29,14 @@ chosen or last available location and app preferences can be stored locally. Onl
 object details and curated highlights require requests to the selected server; the
 curated index is also requested when the app starts. Downloaded astronomical images
 are cached locally (up to approximately 100 MB); the operating system may clear them.
-Optional 16K/32K panorama maps are downloaded only on request from the selected server
+Optional 16K/32K panorama maps are downloaded only on request from GitHub Releases
 and stored separately for offline use until removed in Panorama resolution, through
 Android app storage controls, or by uninstalling. These maps are outside the 100 MB cache.
+GitHub receives the download requests and serves the files through its download infrastructure.
+On Android, requested panorama downloads can continue in the background using WorkManager.
+Job progress and verified downloaded tiles are stored locally; network interruptions can trigger
+automatic retries. Downloads can be cancelled in the app or in their Android notification.
+GitHub privacy statement: https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement
 Captured photographs and metadata are kept in the active in-memory result session.
 NightSky attempts to remove the camera's temporary capture after reading it. The
 result session is cleared when you leave the result screen. This is not a guarantee
