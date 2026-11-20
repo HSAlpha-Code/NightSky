@@ -25,9 +25,9 @@ import 'package:night_sky/widgets/curated_viewer.dart';
 
 import 'fake_backend.dart';
 
-class _NullPanoramaNotifier extends MellingerPanoramaNotifier {
+class _NullPanoramaNotifier extends SkyPanoramaNotifier {
   @override
-  MellingerPanorama? build() => null;
+  SkyPanorama? build() => null;
 }
 
 class _DelayedSettingsStore extends MemorySettingsStore {
@@ -60,7 +60,7 @@ void main() {
         cacheStoreProvider.overrideWithValue(MemoryCacheStore()),
         apiClientProvider.overrideWithValue(ApiClient('http://test', dio: fakeDio(b))),
         skyCatalogProvider.overrideWith((_) async => catalog),
-        mellingerImageProvider.overrideWith(_NullPanoramaNotifier.new),
+        skyPanoramaProvider.overrideWith(_NullPanoramaNotifier.new),
         skyShaderProgramProvider.overrideWith((_) async => null),
       ],
     );
@@ -91,7 +91,7 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('graceful manual drag fallback, Mellinger credit, and pan updates pointing',
+  testWidgets('graceful manual drag fallback, NASA credit, and pan updates pointing',
       (tester) async {
     final c = makeContainer();
     await tester.pumpWidget(
@@ -110,7 +110,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(find.textContaining('Axel Mellinger'), findsOneWidget);
+    expect(find.textContaining('NASA/GSFC'), findsOneWidget);
     expect(find.byKey(const Key('resume-live-compass')), findsOneWidget);
     expect(find.textContaining('Alt +35° · S 180°'), findsOneWidget);
 
@@ -326,7 +326,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 250));
     expect(find.text('Sky Layers & Display'), findsOneWidget);
     expect(find.text('Graphics Quality'), findsOneWidget);
-    expect(find.textContaining('Axel Mellinger'), findsWidgets);
+    expect(find.textContaining('NASA/GSFC'), findsWidgets);
     expect(find.textContaining('BSD-3-Clause'), findsOneWidget);
 
     // Toggling Milky Way, Stars, and Constellations updates the open sheet's chips live
@@ -475,7 +475,7 @@ void main() {
     }
 
     late final ui.FragmentProgram? program;
-    late final MellingerPanorama pano;
+    late final SkyPanorama pano;
     late final ByteData shadedRgba;
     late final ByteData uniformRgba;
 
@@ -493,7 +493,7 @@ void main() {
       program = await ui.FragmentProgram.fromAsset(skySphereShaderAsset);
       final east = await makeSolidTexture(16, 110, 120, 140);
       final west = await makeSolidTexture(16, 110, 120, 140);
-      pano = MellingerPanorama(east: east, west: west);
+      pano = SkyPanorama(east: east, west: west);
 
       Future<ByteData> renderFrame({required bool horizonShading}) async {
         final recorder = ui.PictureRecorder();

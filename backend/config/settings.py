@@ -85,7 +85,13 @@ DATABASES = {
 
 TEMPLATES = []
 STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"   # the API serves no static files; set for collectstatic
+STATIC_ROOT = BASE_DIR / "staticfiles"
+# Vercel collects optional panorama packs onto its CDN. Keep these large downloads
+# outside the Python function bundle; the API view also serves them when self-hosted.
+STATICFILES_DIRS = [
+    (f"panorama/nasa2020-v1/{resolution}", BASE_DIR / "panorama_packs" / resolution)
+    for resolution in ("16k", "32k")
+]
 USE_TZ = True
 TIME_ZONE = "UTC"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

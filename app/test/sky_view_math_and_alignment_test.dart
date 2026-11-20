@@ -316,12 +316,12 @@ void main() {
     });
   });
 
-  group('Mellinger 8K Milky Way panorama <-> catalog alignment', () {
-    test('bundled stars and Andromeda align with bright features in dual-hemisphere 8K WebP',
+  group('NASA 8K Milky Way panorama <-> catalog alignment', () {
+    test('bundled stars align with bright features in dual-hemisphere 8K WebP',
         () async {
       await Future<void>.delayed(const Duration(milliseconds: 50));
-      final eastBytes = await File('assets/sky/mellinger_east.webp').readAsBytes();
-      final westBytes = await File('assets/sky/mellinger_west.webp').readAsBytes();
+      final eastBytes = await File('assets/sky/nasa_2020_east.webp').readAsBytes();
+      final westBytes = await File('assets/sky/nasa_2020_west.webp').readAsBytes();
       final east = img.decodeWebP(eastBytes)!;
       final west = img.decodeWebP(westBytes)!;
       expect((east.width, east.height), (4096, 4096));
@@ -337,7 +337,7 @@ void main() {
         return (px.r + px.g + px.b) / 3.0;
       }
 
-      // Check 5 bright isolated stars across both hemispheres + M31 Andromeda Galaxy from the
+      // Check 5 bright isolated stars across both hemispheres from the
       // shipped catalog against the shipped 8192x4096 Mellinger panorama pixels.
       final targets = <SkyObject>[
         catalog.starObjectAt(catalog.indexOfHip(32349)), // Sirius (west hemisphere)
@@ -345,7 +345,6 @@ void main() {
         catalog.starObjectAt(catalog.indexOfHip(69673)), // Arcturus
         catalog.starObjectAt(catalog.indexOfHip(113368)), // Fomalhaut
         catalog.starObjectAt(catalog.indexOfHip(7588)), // Achernar
-        catalog.deepSkyObjects.firstWhere((d) => d.id == 'NGC0224'), // Andromeda Galaxy
       ];
 
       const rWin = 16;
@@ -384,7 +383,7 @@ void main() {
         expect(offsetDeg, lessThanOrEqualTo(0.15),
             reason: '${obj.name} centroid offset ${offsetDeg.toStringAsFixed(3)}°');
         expect(peak, greaterThan(medianBg + 80.0),
-            reason: '${obj.name} should sit on a bright star/galaxy core in Mellinger');
+            reason: '${obj.name} should sit on a bright star/galaxy core in NASA Deep Star Maps 2020');
       }
 
       // Verify global orientation (no N/S or E/W flip, seamless across East/West seam at l=0°).

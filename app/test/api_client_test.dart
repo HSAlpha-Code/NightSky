@@ -21,7 +21,7 @@ void main() {
     backend.json('GET /api/providers', providersJson);
     final c = await api.getProviders();
     expect(c.defaultKey, 'dss2_color');
-    expect(c.providers.map((p) => p.key), ['dss2_color', 'skyview_mellinger']);
+    expect(c.providers.map((p) => p.key), ['dss2_color', 'nasa_starmap_2020']);
     expect(c.providers[0].supportsDetail, isTrue);
     expect(c.providers[1].supportsDetail, isFalse);
   });
@@ -42,17 +42,17 @@ void main() {
 
   test('skyImage returns bytes and fallback headers', () async {
     backend.image('POST /api/sky-image', [9, 9, 9], {
-      'X-Provider': 'skyview_mellinger',
+      'X-Provider': 'nasa_starmap_2020',
       'X-Provider-Name': 'Mellinger',
       'X-Credit': 'NASA SkyView',
       'X-Fallback-Used': 'true',
       'X-Fallback-Reason': 'PROVIDER_UNAVAILABLE',
-      'X-Fallback-Message': 'DSS2 is down; showing Mellinger instead.',
+      'X-Fallback-Message': 'DSS2 is down; showing NASA Deep Star Maps 2020 instead.',
     });
     final img = await api.skyImage(
         pointing: SolveResult.fromJson(solveJson), providerKey: 'dss2_color', width: 300, height: 400);
     expect(img.bytes, [9, 9, 9]);
-    expect(img.providerKey, 'skyview_mellinger');
+    expect(img.providerKey, 'nasa_starmap_2020');
     expect(img.fallbackUsed, isTrue);
     expect(img.fallbackReason, 'PROVIDER_UNAVAILABLE');
     final body = backend.requests.single.data as Map;

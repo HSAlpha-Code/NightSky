@@ -287,7 +287,7 @@ class EndpointTests(SimpleTestCase):
         render.return_value = mosaic.Mosaic(_jpeg(), ["Hubble ACS"], 0.55)
         resp = self.client.get(
             "/api/landmark-detail",
-            {"id": "NGC1976", "provider": "skyview_mellinger"},
+            {"id": "NGC1976", "provider": "nasa_starmap_2020"},
         )
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
@@ -309,7 +309,7 @@ class EndpointTests(SimpleTestCase):
     def test_wide_field_only_provider_rejected_on_explicit_survey_closeup(self):
         resp = self.client.get(
             "/api/landmark-detail",
-            {"id": "NGC1976", "view": "survey", "provider": "skyview_mellinger"},
+            {"id": "NGC1976", "view": "survey", "provider": "nasa_starmap_2020"},
         )
         self.assertEqual(resp.status_code, 404)
         self.assertEqual(resp.json()["error"]["code"], "NO_COVERAGE")

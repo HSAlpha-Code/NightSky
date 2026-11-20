@@ -2,6 +2,7 @@ from django.http import JsonResponse
 from django.urls import include, path
 
 from .legal import document
+from .panorama import panorama_file
 
 
 def index(request):
@@ -13,6 +14,7 @@ def index(request):
 
 
 urlpatterns = [
+    path("api/panorama/nasa2020-v1/<str:resolution>/<str:filename>", panorama_file),
     path("privacy/", document, {"name": "privacy"}),
     path("terms/", document, {"name": "terms"}),
     path("credits/", document, {"name": "credits"}),

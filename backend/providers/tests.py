@@ -23,11 +23,11 @@ def _resp(status=200, content=b"\xff\xd8jpeg", ctype="image/jpeg"):
 class RegistryTests(SimpleTestCase):
     def test_default_and_curated_provider_set(self):
         self.assertEqual(get_provider(None).key, "dss2_color")
-        self.assertEqual([p.key for p in all_providers()], ["dss2_color", "skyview_mellinger"])
+        self.assertEqual([p.key for p in all_providers()], ["dss2_color", "nasa_starmap_2020"])
         self.assertEqual([p.key for p in detail_providers()], ["dss2_color"])
 
     def test_mellinger_is_field_only_and_falls_back_to_dss2_on_tight_fov(self):
-        mellinger = get_provider("skyview_mellinger")
+        mellinger = get_provider("nasa_starmap_2020")
         self.assertFalse(mellinger.supports_detail)
         self.assertTrue(mellinger.supports(10, -60, 45.0))
         self.assertFalse(mellinger.supports(10, -60, 0.2))
@@ -37,13 +37,13 @@ class RegistryTests(SimpleTestCase):
     def test_fallback_prefers_other_service_for_wide_fields(self):
         dss = get_provider("dss2_color")
         candidates = fallback_candidates(10, 20, 20.0, exclude=dss, service_failed=True)
-        self.assertEqual([c.key for c in candidates], ["skyview_mellinger"])
+        self.assertEqual([c.key for c in candidates], ["nasa_starmap_2020"])
         # On tight fields (< 5 deg), Mellinger is excluded from fallback candidates.
         self.assertEqual(fallback_candidates(10, 20, 0.5, exclude=dss), [])
 
     def test_strict_no_fallback_raises_on_unsupported_fov(self):
         with self.assertRaises(ApiError) as ctx:
-            get_sky_image(10, 20, 0.2, 0, "skyview_mellinger", 400, 400, allow_fallback=False)
+            get_sky_image(10, 20, 0.2, 0, "nasa_starmap_2020", 400, 400, allow_fallback=False)
         self.assertEqual(ctx.exception.code, "NO_COVERAGE")
 
 

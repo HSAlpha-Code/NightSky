@@ -82,7 +82,9 @@ List<SkyProviderInfo> detailSurveyProviders(ProviderCatalog? catalog) => [
 String effectiveDetailSurveyKey(ProviderCatalog? catalog, String? requestedKey) {
   final surveys = detailSurveyProviders(catalog);
   if (surveys.isEmpty) {
-    if (requestedKey == null || requestedKey == 'skyview_mellinger') return 'dss2_color';
+    if (requestedKey == null || requestedKey == 'skyview_mellinger' || requestedKey == 'nasa_starmap_2020') {
+      return 'dss2_color';
+    }
     return requestedKey;
   }
   if (requestedKey != null && surveys.any((p) => p.key == requestedKey)) {

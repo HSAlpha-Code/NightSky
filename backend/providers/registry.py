@@ -2,13 +2,13 @@
 
 Only distinct, reliable all-sky optical surveys are exposed:
 - DSS2 Color: sharp across both wide camera fields and star/object close-ups.
-- Mellinger Color: wide-angle Milky Way panorama for camera-field views (FOV >= 5 deg).
+- NASA Deep Star Maps 2020: local wide-field star map (FOV >= 5 deg).
 """
 from django.conf import settings
 
 from .base import ImageProvider
 from .hips2fits import Hips2FitsProvider
-from .skyview import SkyViewProvider
+from .nasa_starmap import NasaStarMapProvider
 
 MIRROR = settings.HIPS_MIRROR_URL.rstrip("/")  # ESA ESASky copy of the CDS surveys ("" = off)
 
@@ -21,23 +21,16 @@ PROVIDERS: list[ImageProvider] = [
         "optical",
         mirror=MIRROR and f"{MIRROR}/DSSColor",
     ),
-    SkyViewProvider(
-        "skyview_mellinger",
-        ["Mellinger Red", "Mellinger Green", "Mellinger Blue"],
-        "Mellinger Color",
-        "Axel Mellinger's all-sky Milky Way mosaic. Best for wide phone-camera sky fields.",
-        "optical",
-        scaling="Linear",
-        coverage="all-sky (wide fields >= 5°)",
-        min_fov_deg=5.0,
-        supports_detail=False,
-    ),
+    NasaStarMapProvider(),
 ]
 
 _BY_KEY = {p.key: p for p in PROVIDERS}
 
 
 def get_provider(key: str | None) -> ImageProvider | None:
+    # Older clients may still send this key; never request the unlicensed survey.
+    if key == "skyview_mellinger":
+        key = "nasa_starmap_2020"
     return _BY_KEY.get(key or settings.DEFAULT_PROVIDER)
 
 

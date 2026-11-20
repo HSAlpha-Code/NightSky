@@ -92,14 +92,14 @@ enum SkyQuality {
   ),
   balanced(
     'Balanced',
-    'Crisp Retina sky (6.4K panorama, stars to mag 6.2)',
-    hemisphereSize: 3200,
+    'NASA 8K sky panorama, stars to mag 6.2',
+    hemisphereSize: 4096,
     limitingMagnitude: 6.2,
     maxLabels: 34,
   ),
   maxDetail(
     'Max detail',
-    'Full 8192×4096 8K Mellinger mosaic and all naked-eye stars (mag 6.5)',
+    'Full 8192×4096 8K NASA mosaic and all naked-eye stars (mag 6.5)',
     hemisphereSize: 4096,
     limitingMagnitude: 6.5,
     maxLabels: 50,

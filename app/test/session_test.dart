@@ -71,9 +71,9 @@ void main() {
     backend.json('POST /api/solve', solveJson);
     backend.image('POST /api/sky-image', [1], {'X-Provider': 'dss2_color'});
     await session().start(photo, meta);
-    await session().changeProvider('skyview_mellinger');
-    expect(container.read(selectedProviderProvider), 'skyview_mellinger');
-    expect((backend.requests.last.data as Map)['provider'], 'skyview_mellinger');
+    await session().changeProvider('nasa_starmap_2020');
+    expect(container.read(selectedProviderProvider), 'nasa_starmap_2020');
+    expect((backend.requests.last.data as Map)['provider'], 'nasa_starmap_2020');
     expect(backend.requests.where((r) => r.path == '/solve').length, 1);
   });
 

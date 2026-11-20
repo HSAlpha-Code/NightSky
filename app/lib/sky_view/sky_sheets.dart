@@ -11,6 +11,7 @@ import '../widgets/camera_hints.dart';
 import '../widgets/curated_viewer.dart';
 import 'astro_math.dart';
 import 'ephemeris.dart';
+import 'panorama_downloads.dart';
 import 'sky_catalog.dart';
 import 'sky_overlay_painter.dart';
 
@@ -939,9 +940,13 @@ class SkyLayersSheet extends ConsumerWidget {
               ),
             ),
             const Divider(height: 20),
+            const PanoramaDownloads(),
+            const Divider(height: 20),
             Text(
-              'Credits: All-sky Milky Way panorama © Axel Mellinger (PASP 121, 1180) via NASA '
-              'SkyView. Stars & 88 IAU constellation figures from ESA Hipparcos / d3-celestial '
+              'Credits: Deep Star Maps 2020 by Ernie Wright. NASA/Goddard Space Flight Center '
+              'Scientific Visualization Studio. Gaia DR2: ESA/Gaia/DPAC. Public domain under '
+              'NASA SVS policy (svs.gsfc.nasa.gov/help/). NASA does not endorse NightSky. '
+              'Stars & 88 IAU constellation figures from ESA Hipparcos / d3-celestial '
               '(Olaf Frohn, BSD-3-Clause) and the IAU Working Group on Star Names. Deep-sky '
               'catalog from OpenNGC (Mattia Verga, CC BY-SA 4.0). Offline geomagnetic declination '
               'from NOAA WMM-2025.',

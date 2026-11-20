@@ -329,9 +329,7 @@ def write_sources_doc(star_count: int, named_count: int, con_count: int, dso_cou
         "All catalogs and imagery shipped inside `app/assets/sky/` are used offline at runtime.\n\n"
         "| File | Contents | Upstream Source | License |\n"
         "|---|---|---|---|\n"
-        "| `mellinger_east.webp`, `mellinger_west.webp` | 8192×4096 (8K, dual 4096×4096) Galactic `CAR` Milky Way panorama | "
-        "Axel Mellinger (2009, *PASP* 121, 1180) stitched from 114 high-res `<30°` `TAN` plates via NASA SkyView | "
-        "© Axel Mellinger — **verify commercial/redistribution license terms with Axel Mellinger before release** |\n"
+        '| `nasa_2020_east.webp`, `nasa_2020_west.webp` | 8192 x 4096 (8K, dual 4096 x 4096) Galactic plate carree star map | [NASA Deep Star Maps 2020, SVS #4851](https://svs.gsfc.nasa.gov/4851/), Ernie Wright; corrected Galactic version (4 January 2021) | Public domain per [NASA SVS policy](https://svs.gsfc.nasa.gov/help/); NASA media usage guidelines apply. Credit: NASA/Goddard Space Flight Center Scientific Visualization Studio. Gaia DR2: ESA/Gaia/DPAC. |\n'
         f"| `stars.bin` | {star_count} stars to V ≤ 6.5 (J2000 RA/Dec, Vmag, B−V, HIP) | "
         "`ofrohn/d3-celestial` (`data/stars.8.json`, derived from ESA Hipparcos `I/239` & XHIP) | "
         "BSD-3-Clause (Copyright © 2015 Olaf Frohn) |\n"

@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 from .base import ProviderError
 from .hips2fits import Hips2FitsProvider
 from .skyview import SkyViewProvider
+from .nasa_starmap import NasaStarMapProvider
 
 JPEG = b"\xff\xd8fake-jpeg"
 
@@ -25,9 +26,9 @@ class ProvidersEndpointTests(ApiTestCase):
         body = self.client.get("/api/providers").json()
         self.assertEqual(body["default"], "dss2_color")
         by_key = {p["key"]: p for p in body["providers"]}
-        self.assertEqual(set(by_key), {"dss2_color", "skyview_mellinger"})
+        self.assertEqual(set(by_key), {"dss2_color", "nasa_starmap_2020"})
         self.assertTrue(by_key["dss2_color"]["supports_detail"])
-        self.assertFalse(by_key["skyview_mellinger"]["supports_detail"])
+        self.assertFalse(by_key["nasa_starmap_2020"]["supports_detail"])
         for field in ("name", "description", "wavelength", "coverage", "all_sky",
                       "supports_detail", "credit"):
             self.assertIn(field, body["providers"][0])
@@ -52,27 +53,27 @@ class SkyImageEndpointTests(ApiTestCase):
         self.client.post("/api/sky-image", {**self.body, "ra": 83.8201}, format="json")
         self.assertEqual(mock_fetch.call_count, 1)  # rounded key -> cache hit
 
-    @patch.object(SkyViewProvider, "fetch_cutout", side_effect=AssertionError("not expected"))
+    @patch.object(NasaStarMapProvider, "fetch_cutout", side_effect=AssertionError("not expected"))
     @patch.object(Hips2FitsProvider, "fetch_cutout", return_value=JPEG)
     def test_no_coverage_falls_back(self, *_):
         resp = self.client.post("/api/sky-image",
-                                {**self.body, "fov": 0.5, "provider": "skyview_mellinger"},
+                                {**self.body, "fov": 0.5, "provider": "nasa_starmap_2020"},
                                 format="json")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp["X-Fallback-Used"], "true")
         self.assertEqual(resp["X-Fallback-Reason"], "NO_COVERAGE")
         self.assertEqual(resp["X-Provider"], "dss2_color")
 
-    @patch.object(SkyViewProvider, "fetch_cutout", return_value=JPEG)
+    @patch.object(NasaStarMapProvider, "fetch_cutout", return_value=JPEG)
     @patch.object(Hips2FitsProvider, "fetch_cutout", side_effect=ProviderError("down"))
     def test_service_down_falls_back_to_other_service(self, hips, skyview):
         resp = self.client.post("/api/sky-image", self.body, format="json")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp["X-Fallback-Reason"], "PROVIDER_UNAVAILABLE")
-        self.assertEqual(resp["X-Provider"], "skyview_mellinger")
+        self.assertEqual(resp["X-Provider"], "nasa_starmap_2020")
         self.assertEqual(hips.call_count, 1)  # other hips2fits surveys skipped: service marked down
 
-    @patch.object(SkyViewProvider, "fetch_cutout", side_effect=ProviderError("down"))
+    @patch.object(NasaStarMapProvider, "fetch_cutout", side_effect=ProviderError("down"))
     @patch.object(Hips2FitsProvider, "fetch_cutout", side_effect=ProviderError("down"))
     def test_everything_down_returns_503(self, *_):
         resp = self.client.post("/api/sky-image", self.body, format="json")

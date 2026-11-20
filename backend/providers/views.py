@@ -25,7 +25,8 @@ def sky_image(request):
     d = s.validated_data
     result = get_sky_image(d["ra"] % 360, d["dec"], d["fov"], d["rotation"] % 360,
                            d["provider"] or None, d["width"], d["height"])
-    resp = HttpResponse(result.data, content_type="image/jpeg")
+    content_type = "image/png" if result.data.startswith(b"\x89PNG\r\n\x1a\n") else "image/jpeg"
+    resp = HttpResponse(result.data, content_type=content_type)
     resp["X-Provider"] = result.provider.key
     resp["X-Provider-Name"] = _ascii(result.provider.name)
     resp["X-Credit"] = _ascii(result.provider.credit)

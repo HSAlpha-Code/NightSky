@@ -12,6 +12,8 @@ import '../sky_math.dart';
 import '../sky_view/astro_math.dart';
 import '../sky_view/ephemeris.dart';
 import '../sky_view/panorama_loader.dart';
+import '../sky_view/panorama_packs.dart';
+import '../sky_view/panorama_tile_cache.dart';
 import '../sky_view/sky_catalog.dart';
 import '../sky_view/sky_overlay_painter.dart';
 import '../sky_view/sky_sheets.dart';
@@ -25,7 +27,7 @@ import 'events_screen.dart';
 import 'solar_system_screen.dart';
 
 /// 3D virtual night sky driven by orientation sensors (with manual touch drag fallback),
-/// backed offline by Axel Mellinger's Milky Way panorama, 8,874 stars, 88 constellations,
+/// backed offline by NASA's Deep Star Maps 2020 panorama, 8,874 stars, 88 constellations,
 /// deep-sky highlights, and real-time Solar System ephemeris.
 class SkyViewScreen extends ConsumerStatefulWidget {
   const SkyViewScreen({
@@ -540,7 +542,9 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
 
     final settings = ref.watch(settingsProvider);
     final layers = ref.watch(skyLayersProvider);
-    final panorama = ref.watch(mellingerImageProvider);
+    final panorama = ref.watch(skyPanoramaProvider);
+    final panoramaPack = ref.watch(panoramaPacksProvider);
+    final tileCache = ref.watch(panoramaTileCacheProvider);
     final shaderProgram = ref.watch(skyShaderProgramProvider).value;
     final catalog = ref.watch(skyCatalogProvider).value;
     final curatedIndex = ref.watch(curatedIndexProvider);
@@ -576,6 +580,8 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
             constraints.maxHeight > 0 ? constraints.maxHeight : 640.0,
           );
           final insets = MediaQuery.paddingOf(context);
+          tileCache.updateView(panoramaPack.active, camera, viewSize,
+              layers.milkyWay && shaderProgram != null);
           final isLandscape = viewSize.width > viewSize.height;
           final guideInfo = _guideTarget == null
               ? null
@@ -637,7 +643,7 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
 
           final creditLine = Text(
             '${spotlit != null ? '${spotlit.name} · ' : ''}'
-            'FOV ${camera.horizontalFovDeg(viewSize).round()}° · Milky Way © Axel Mellinger',
+            'FOV ${camera.horizontalFovDeg(viewSize).round()}° · NASA/GSFC · ESA/Gaia/DPAC',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54),
             textAlign: TextAlign.center,
           );
@@ -692,6 +698,7 @@ class _SkyViewScreenState extends ConsumerState<SkyViewScreen>
                     painter: SkySpherePainter(
                       camera: camera,
                       panorama: panorama,
+                      tileCache: tileCache,
                       shaderProgram: shaderProgram,
                       sunAltitudeDeg: solar.sunAltitudeDeg,
                       showMilkyWay: layers.milkyWay,

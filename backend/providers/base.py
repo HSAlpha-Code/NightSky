@@ -23,7 +23,7 @@ class ImageProvider(ABC):
     @abstractmethod
     def fetch_cutout(self, ra: float, dec: float, fov_deg: float, rotation_deg: float,
                      width_px: int, height_px: int) -> bytes:
-        """Return JPEG bytes centered on (ra, dec) with the given horizontal FOV.
+        """Return encoded JPEG or PNG bytes centered on (ra, dec) with the horizontal FOV.
 
         rotation_deg is the position angle of the image "up" direction, east of north.
         """

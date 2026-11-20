@@ -1,0 +1,27 @@
+{
+  "width": 8192,
+  "height": 4096,
+  "source": "https://svs.gsfc.nasa.gov/vis/a000000/a004800/a004851/starmap_2020_8k_gal.exr",
+  "sourceBytes": 160735772,
+  "sourceSha256": "d70924422d3e0159764b16a19658784befcf73b97e06e5c16614860c1514bb58",
+  "encoding": "WebP lossless RGB8; exact decoded-pixel verification",
+  "conversion": "Native dimensions; linear HDR to sRGB8; values above display white clipped",
+  "credit": "NASA/Goddard Space Flight Center Scientific Visualization Studio. Gaia DR2: ESA/Gaia/DPAC.",
+  "license": "Public domain; https://svs.gsfc.nasa.gov/help/",
+  "outputs": [
+    {
+      "file": "nasa_2020_east.webp",
+      "width": 4096,
+      "height": 4096,
+      "bytes": 17394778,
+      "sha256": "35174347db57406529a89f6d9a5035db2fab56612e90a405fd0106ab112898bc"
+    },
+    {
+      "file": "nasa_2020_west.webp",
+      "width": 4096,
+      "height": 4096,
+      "bytes": 17443068,
+      "sha256": "cf5c724bb0461e843226befa6bc66b4518ae98e74e9beafe7c6e2c6dda56b9e8"
+    }
+  ]
+}

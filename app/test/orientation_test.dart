@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sky/sensors.dart';
 import 'package:night_sky/sky_math.dart';
@@ -155,6 +156,48 @@ void main() {
       expect(cameraAltAzDeg(e.current!).altitude, closeTo(60, 1e-6));
     });
   });
+
+  for (final mode in SensorMode.values) {
+    testWidgets('camera keeps receiving ${mode.name} after repeated Sky View visits', (tester) async {
+      final sinks = <SensorMode, MockStreamHandlerEventSink>{};
+      for (final entry in {
+        SensorMode.compass: const EventChannel('night_sky/sensor_events'),
+        SensorMode.gyro: const EventChannel('night_sky/gyro_events'),
+      }.entries) {
+        tester.binding.defaultBinaryMessenger.setMockStreamHandler(entry.value, MockStreamHandler.inline(
+          onListen: (_, sink) { sinks[entry.key] = sink; },
+          onCancel: (_) { sinks.remove(entry.key); },
+        ));
+      }
+      final camera = OrientationTracker(mode: mode, alpha: 1)..start();
+      final otherMode = mode == SensorMode.compass ? SensorMode.gyro : SensorMode.compass;
+      for (final altitude in [10.0, 40.0]) {
+        final sky = OrientationTracker(mode: mode)..start();
+        await tester.pump();
+        // Settings and the chart's sensor fallback can also select a different mode.
+        if (altitude == 40) {
+          sky.start(mode: otherMode);
+          await tester.pump();
+        }
+        sky.stop();
+        await tester.pump();
+        final sink = sinks[mode]!;
+        final pose = phone(altitude, 20);
+        if (mode == SensorMode.compass) {
+          final (gravity, magnetic) = readings(pose);
+          sink.success([0, ...gravity, double.nan, 3, 1000000, 0]);
+          sink.success([1, ...magnetic, double.nan, 3, 1000000, 0]);
+        } else {
+          sink.success([2, ...matrixToQuaternion(pose), 3, 1000000, 0]);
+        }
+        await tester.pump();
+        expect(cameraAltAzDeg(camera.engine.current!).altitude, closeTo(altitude, 1e-6));
+      }
+      camera.stop();
+      await tester.pump();
+      expect(sinks, isEmpty);
+    });
+  }
 
   test('sensor availability per mode', () {
     const compassOnly = SensorAvailability(accelerometer: true, magnetometer: true);

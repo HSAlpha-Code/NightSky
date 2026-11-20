@@ -67,15 +67,15 @@ const providersJson = {
       'credit': 'DSS2 via CDS',
     },
     {
-      'key': 'skyview_mellinger',
-      'name': 'Mellinger Color',
+      'key': 'nasa_starmap_2020',
+      'name': 'NASA Deep Star Maps 2020',
       'description': 'Wide-field Milky Way mosaic',
       'wavelength': 'optical',
       'coverage': 'all-sky (wide fields >= 5°)',
       'all_sky': true,
       'supports_detail': false,
       'service': 'skyview',
-      'credit': 'Mellinger via NASA SkyView',
+      'credit': 'NASA/GSFC; Gaia DR2: ESA/Gaia/DPAC',
     },
   ],
 };

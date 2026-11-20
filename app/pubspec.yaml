@@ -41,6 +41,7 @@ dependencies:
   flutter_riverpod: ^3.3.2
   image: ^4.12.0
   url_launcher: ^6.3.3
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:
@@ -67,8 +68,8 @@ flutter:
   assets:
     - assets/observing/events.csv
     - assets/legal/
-    - assets/sky/mellinger_east.webp
-    - assets/sky/mellinger_west.webp
+    - assets/sky/nasa_2020_east.webp
+    - assets/sky/nasa_2020_west.webp
     - assets/sky/stars.bin
     - assets/sky/sky_catalog.json
 

@@ -259,8 +259,8 @@ Vec3 altAzToEnu(double altitudeDeg, double azimuthDeg) {
   return (lDeg: l, bDeg: b);
 }
 
-/// Normalized UV coordinates (0..1, 0..1) in the Mellinger Galactic CAR panorama for an ICRS
-/// J2000 unit vector. Matches NASA SkyView WCS (`CRVAL=(0,0), CDELT=(-0.1, +0.1)`):
+/// Normalized UV coordinates (0..1, 0..1) in the NASA Galactic CAR panorama for an ICRS
+/// J2000 unit vector. Matches the corrected (4 January 2021) Galactic map from NASA SVS #4851:
 /// - Centre (0.5, 0.5) is Galactic (l = 0, b = 0)
 /// - Left edge (u = 0) is l = +180 deg, right edge (u = 1) is l = -180 deg
 /// - Top edge (v = 0) is North Galactic Pole (b = +90 deg), bottom (v = 1) is b = -90 deg

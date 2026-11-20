@@ -139,7 +139,14 @@ class OrientationTracker {
   OrientationTracker({SensorMode mode = SensorMode.compass, double alpha = 0.2})
       : engine = OrientationEngine(mode: mode, alpha: alpha);
 
-  static const _events = EventChannel('night_sky/sensor_events');
+  // Camera and Sky View can both be mounted during navigation. Each mode has
+  // one broadcast stream, so leaving a route only removes its own listener.
+  static final _streams = {
+    SensorMode.compass: const EventChannel('night_sky/sensor_events')
+        .receiveBroadcastStream({'mode': 'compass'}),
+    SensorMode.gyro: const EventChannel('night_sky/gyro_events')
+        .receiveBroadcastStream({'mode': 'gyro'}),
+  };
 
   final OrientationEngine engine;
   StreamSubscription<dynamic>? _sub;
@@ -175,7 +182,7 @@ class OrientationTracker {
     magnetometerAccuracy = null;
     rotationAccuracy = null;
     engine.reset();
-    _sub = _events.receiveBroadcastStream({'mode': engine.mode.name}).listen(_onEvent,
+    _sub = _streams[engine.mode]!.listen(_onEvent,
         onError: (Object err) => lastError = err);
   }
 

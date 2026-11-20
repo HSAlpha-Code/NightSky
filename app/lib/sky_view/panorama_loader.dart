@@ -7,14 +7,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../settings.dart';
 
-const mellingerEastAssetPath = 'assets/sky/mellinger_east.webp';
-const mellingerWestAssetPath = 'assets/sky/mellinger_west.webp';
+const nasaEastAssetPath = 'assets/sky/nasa_2020_east.webp';
+const nasaWestAssetPath = 'assets/sky/nasa_2020_west.webp';
 const skySphereShaderAsset = 'shaders/sky_sphere.frag';
 
 /// Dual-hemisphere GPU textures forming an all-sky 8K (`2*S x S`) Galactic CAR panorama,
 /// keeping each individual texture `<= 4096 x 4096` for wide mobile GPU compatibility.
-class MellingerPanorama {
-  const MellingerPanorama({required this.east, required this.west});
+class SkyPanorama {
+  const SkyPanorama({required this.east, required this.west});
 
   /// Left half (`u in [0, 0.5]`, Galactic longitude `l in [+180°, 0°]`).
   final ui.Image east;
@@ -44,8 +44,8 @@ Future<ui.Image?> _decodeSquare(String assetPath, int size, AssetBundle b) async
 }
 
 /// Decodes both hemispheres scaled to [SkyQuality.hemisphereSize] (`1600` Power saver,
-/// `3200` Balanced Retina default, `4096` full 8K Max detail).
-Future<MellingerPanorama?> decodeMellingerPanorama(
+/// `4096` full 8K Balanced default and Max detail).
+Future<SkyPanorama?> decodeSkyPanorama(
   SkyQuality quality, {
   AssetBundle? bundle,
 }) async {
@@ -53,8 +53,8 @@ Future<MellingerPanorama?> decodeMellingerPanorama(
     final b = bundle ?? rootBundle;
     final edge = quality.hemisphereSize;
     final results = await Future.wait([
-      _decodeSquare(mellingerEastAssetPath, edge, b),
-      _decodeSquare(mellingerWestAssetPath, edge, b),
+      _decodeSquare(nasaEastAssetPath, edge, b),
+      _decodeSquare(nasaWestAssetPath, edge, b),
     ]);
     final east = results[0];
     final west = results[1];
@@ -63,7 +63,7 @@ Future<MellingerPanorama?> decodeMellingerPanorama(
       west?.dispose();
       return null;
     }
-    return MellingerPanorama(east: east, west: west);
+    return SkyPanorama(east: east, west: west);
   } catch (_) {
     return null;
   }
@@ -79,15 +79,15 @@ Future<ui.FragmentProgram?> loadSkyShaderProgram() async {
 
 final skyShaderProgramProvider = FutureProvider<ui.FragmentProgram?>((ref) => loadSkyShaderProgram());
 
-/// Manages the active [MellingerPanorama] across [SkyQuality] changes without ever exposing a
+/// Manages the active [SkyPanorama] across [SkyQuality] changes without ever exposing a
 /// disposed `ui.Image` while a new resolution is decoding in the background.
-class MellingerPanoramaNotifier extends Notifier<MellingerPanorama?> {
+class SkyPanoramaNotifier extends Notifier<SkyPanorama?> {
   int _generation = 0;
-  MellingerPanorama? _current;
+  SkyPanorama? _current;
   bool _disposed = false;
 
   @override
-  MellingerPanorama? build() {
+  SkyPanorama? build() {
     ref.onDispose(() {
       _disposed = true;
       _generation++;
@@ -109,7 +109,7 @@ class MellingerPanoramaNotifier extends Notifier<MellingerPanorama?> {
 
   Future<void> _loadQuality(SkyQuality quality) async {
     final gen = ++_generation;
-    final next = await decodeMellingerPanorama(quality);
+    final next = await decodeSkyPanorama(quality);
     if (_disposed || !ref.mounted || gen != _generation) {
       next?.dispose();
       return;
@@ -122,7 +122,7 @@ class MellingerPanoramaNotifier extends Notifier<MellingerPanorama?> {
     }
   }
 
-  static void _retireSafely(MellingerPanorama old) {
+  static void _retireSafely(SkyPanorama old) {
     try {
       SchedulerBinding.instance.addPostFrameCallback((_) => old.dispose());
     } catch (_) {
@@ -131,5 +131,5 @@ class MellingerPanoramaNotifier extends Notifier<MellingerPanorama?> {
   }
 }
 
-final mellingerImageProvider =
-    NotifierProvider<MellingerPanoramaNotifier, MellingerPanorama?>(MellingerPanoramaNotifier.new);
+final skyPanoramaProvider =
+    NotifierProvider<SkyPanoramaNotifier, SkyPanorama?>(SkyPanoramaNotifier.new);

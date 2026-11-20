@@ -31,6 +31,13 @@ uniform float uExposure;
 uniform float uNightVision;
 uniform float uHemiSize;
 uniform float uHorizonShading;
+// Optional installed tile. Columns=0 selects the bundled dual-hemisphere sky.
+uniform float uTileX;
+uniform float uTileY;
+uniform float uTileColumns;
+uniform float uTileRows;
+uniform float uTileSize;
+uniform float uTileGutter;
 
 // Dual 4096x4096 hemispheres forming an 8192x4096 8K Galactic CAR panorama:
 // uPanoEast covers global u in [0, 0.5] (l in [+180, 0]);
@@ -90,9 +97,30 @@ void main() {
   float l = atan(dir.y, dir.x);
   float b = asin(clamp(dir.z, -1.0, 1.0));
   float u = fract(0.5 - l / TWO_PI);
-  float v = clamp(0.5 - b / PI, 0.0002, 0.9998);
+  float sourceHeight = uTileColumns > 0.0 ? uTileRows * uTileSize : uHemiSize;
+  float poleInset = 0.5 / max(sourceHeight, 1.0);
+  float v = clamp(0.5 - b / PI, poleInset, 1.0 - poleInset);
 
-  vec3 sky = samplePanoramaBilinear(u, v, uHemiSize) * uExposure;
+  vec3 sky;
+  if (uTileColumns > 0.0) {
+    vec2 globalTile = vec2(u * uTileColumns, v * uTileRows);
+    vec2 local = globalTile - vec2(uTileX, uTileY);
+    if (local.x < 0.0 || local.x >= 1.0 || local.y < 0.0 || local.y >= 1.0) {
+      fragColor = vec4(0.0);
+      return;
+    }
+    float edge = uTileSize + 2.0 * uTileGutter;
+    vec2 px = local * uTileSize + uTileGutter - 0.5;
+    vec2 base = floor(px);
+    vec2 f = fract(px);
+    vec3 a = texture(uPanoEast, (base + vec2(0.5, 0.5)) / edge).rgb;
+    vec3 b = texture(uPanoEast, (base + vec2(1.5, 0.5)) / edge).rgb;
+    vec3 c = texture(uPanoEast, (base + vec2(0.5, 1.5)) / edge).rgb;
+    vec3 d = texture(uPanoEast, (base + vec2(1.5, 1.5)) / edge).rgb;
+    sky = mix(mix(a, b, f.x), mix(c, d, f.x), f.y) * uExposure;
+  } else {
+    sky = samplePanoramaBilinear(u, v, uHemiSize) * uExposure;
+  }
   sky = pow(max(sky, vec3(0.0)), vec3(1.06));
 
   float sinAlt = dot(dir, zenith);

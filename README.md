@@ -34,17 +34,17 @@ Highlights, or a close-up from Hubble, JWST or any survey.
    mosaics are stitched from ESA ESASky tiles.
 
 ### Sky View mode (offline 3D sensor sky map)
-- **No camera & fully offline**: Renders Axel Mellinger's all-sky Milky Way panorama on a 3D GPU
+- **No camera & fully offline**: Renders NASA's Deep Star Maps 2020 panorama on a 3D GPU
   sky sphere (`app/shaders/sky_sphere.frag`, with automatic `Canvas.drawVertices` fallback),
   aligned to true astronomical north via offline NOAA WMM-2025 geomagnetic declination. Phones
   without a working camera can enable **Start in Sky View** in Settings to skip camera setup
   completely.
-- **Bundled sky layers (~9.10 MB total)**:
-  - `assets/sky/mellinger_east.webp` + `mellinger_west.webp` (4,574 KB + 4,574 KB = **8.93 MB**,
-    stitched from 114 high-resolution $<30^\circ$ Mellinger `TAN` plates into an **8192×4096 (8K)**
-    Galactic `CAR` panorama split into two 4096×4096 GPU-friendly hemispheres): decoded at
-    3200×1600 on *Power saver*, **6400×3200 Retina** on *Balanced* (default), or full **8192×4096
-    (8K)** on *Max detail*, with custom sub-texel bilinear filtering in `sky_sphere.frag`.
+- **Bundled sky layers**:
+  - `assets/sky/nasa_2020_east.webp` + `nasa_2020_west.webp`: NASA SVS #4851's corrected
+    Galactic star map at **8192 x 4096 (8K)**, split into two 4096 x 4096 hemispheres.
+    Balanced (default) and Max detail render the full 8K map; Power saver decodes at 3200 x 1600.
+    The renderer uses sub-texel bilinear filtering. These are catalog-rendered stars, rather
+    than Mellinger's photographic panorama; dust and nebulae are not depicted.
   - `assets/sky/stars.bin` (104 KB): 8,874 naked-eye stars down to magnitude 6.5 (sorted
     brightest-first, with Hipparcos IDs and B−V spectral colours).
   - `assets/sky/sky_catalog.json` (66 KB): 574 proper star names, all 88 IAU constellations
@@ -56,14 +56,30 @@ Highlights, or a close-up from Hubble, JWST or any survey.
   date/time picker), manual coordinate/preset location picker when GPS is unavailable, object
   search with a 3D perimeter directional guide arrow, compass calibration diagnostics, red
   night-vision mode, and direct links to **Curated Cosmic Highlights** and Webb/Hubble close-ups.
+- **Optional 16K and 32K maps**: Install under Settings or Sky Layers & Display > Panorama
+  resolution. Downloads are verified with SHA-256, resume completed tiles after interruption,
+  persist offline, and can be removed independently. Selecting 8K always uses the bundled map.
+  All three resolutions use lossless WebP, verified pixel-for-pixel after converting NASA's
+  linear HDR EXRs to display sRGB8. Native dimensions are preserved; the display conversion
+  clips HDR highlights and is distinct from lossless compression.
+  A bounded cache decodes visible 2048-pixel tiles; the 8K map fills tiles still loading or
+  outside the memory budget. These maps add native detail when zoomed in.
+  The fragment shader applies the same orientation, horizon shading and night vision at every
+  resolution. Backends without custom shader support retain the bundled 8K mesh fallback.
+- To prepare optional server packs: `python app/tool/sky_data/prepare_nasa.py --packs`
+  (requires OpenEXR, numpy and Pillow; 8K preparation also requires OpenCV).
+  Deploy `backend/panorama_packs/` with the backend; its versioned
+  `/api/panorama/nasa2020-v1/{16k,32k}/manifest.json` endpoints deliver the packs.
+  Builds of the app include only the 8K assets. Backend changes and packs must be deployed
+  before downloads are available on the production server.
 - To regenerate the bundled Sky View assets from upstream sources:
-  `python app/tool/sky_data/prepare_mellinger.py` and `python app/tool/sky_data/prepare_catalogs.py`.
+  `python app/tool/sky_data/prepare_nasa.py` and `python app/tool/sky_data/prepare_catalogs.py`.
 
 ### Image sources
 | Key | Source | Coverage |
 |---|---|---|
 | `dss2_color` (default) | DSS2 colour, CDS hips2fits + ESA mirror | All-sky (field & close-ups) |
-| `skyview_mellinger` | Mellinger colour mosaic, NASA SkyView | All-sky (wide fields ≥ 5°) |
+| `nasa_starmap_2020` | NASA Deep Star Maps 2020, locally rendered | All-sky (wide fields >= 5 degrees) |
 
 To add a source, subclass `ImageProvider` in `backend/providers/` (see `base.py`), then add one
 line to `PROVIDERS` in `providers/registry.py`. The app builds its pickers from `GET /api/providers`.
@@ -176,8 +192,11 @@ The solar-system explorer projects heliocentric positions onto the J2000 eclipti
 
 
 ## Credits & data provenance
-- **Milky Way panorama**: © Axel Mellinger (*PASP* 121, 1180, 2009), retrieved in Galactic `CAR`
-  projection via NASA SkyView (HEASARC/GSFC) — **verify license terms before release** (see above).
+- **Sky panorama**: [NASA Deep Star Maps 2020](https://svs.gsfc.nasa.gov/4851/), by Ernie Wright.
+  Credit: NASA/Goddard Space Flight Center Scientific Visualization Studio. Gaia DR2:
+  ESA/Gaia/DPAC. Public domain under the [SVS usage policy](https://svs.gsfc.nasa.gov/help/),
+  subject to [NASA media usage guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/).
+  See `app/assets/sky/SOURCES.md` for processing details. NASA does not endorse NightSky.
 - **Stars & 88 IAU constellations** (`app/assets/sky/stars.bin`, `sky_catalog.json`):
   [`ofrohn/d3-celestial`](https://github.com/ofrohn/d3-celestial) (`stars.8.json`,
   `starnames.json`, `constellations.lines.json`, `constellations.json`), Copyright © 2015 Olaf
@@ -192,3 +211,7 @@ The solar-system explorer projects heliocentric positions onto the J2000 eclipti
 - **Online survey cutouts & space-telescope mosaics**: DSS2, 2MASS, AllWISE and Pan-STARRS via CDS
   hips2fits, NASA SkyView and STScI; Hubble and JWST data (NASA/ESA/CSA) via ESA ESASky and MAST.
   Full per-asset details are recorded in `app/assets/sky/SOURCES.md`.
+
+Vercel serves the optional packs from its static CDN after collectstatic, with a rewrite
+from the versioned API paths. The 16K/32K files are excluded from the Python function bundle.
+Self-hosted Django serves the same paths directly from panorama_packs.

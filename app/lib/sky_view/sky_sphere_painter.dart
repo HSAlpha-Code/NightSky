@@ -6,8 +6,9 @@ import 'package:flutter/material.dart';
 
 import 'astro_math.dart';
 import 'panorama_loader.dart';
+import 'panorama_tile_cache.dart';
 
-/// Renders the 3D 8K Mellinger Milky Way sphere, horizon line, cardinal compass points, and
+/// Renders the 3D 8K NASA Milky Way sphere, horizon line, cardinal compass points, and
 /// optional sky overlays onto a single hardware-accelerated [Canvas].
 class SkySpherePainter extends CustomPainter {
   SkySpherePainter({
@@ -21,10 +22,12 @@ class SkySpherePainter extends CustomPainter {
     this.nightVision = false,
     this.exposure = 1.12,
     this.overlayPaint,
-  });
+    this.tileCache,
+  }) : super(repaint: tileCache);
 
   final SkyCamera camera;
-  final MellingerPanorama? panorama;
+  final SkyPanorama? panorama;
+  final PanoramaTileCache? tileCache;
   final ui.FragmentProgram? shaderProgram;
   final double sunAltitudeDeg;
   final bool showMilkyWay;
@@ -52,13 +55,36 @@ class SkySpherePainter extends CustomPainter {
 
     canvas.drawRect(
       Offset.zero & size,
-      Paint()..color = nightVision ? const Color(0xFF090101) : const Color(0xFF03050A),
+      Paint()
+        ..color = nightVision
+            ? const Color(0xFF090101)
+            : const Color(0xFF03050A),
     );
 
     final pano = panorama;
     if (showMilkyWay && pano != null) {
       if (shaderProgram != null) {
         _paintWithShader(canvas, size, pano, shaderProgram!);
+        final cache = tileCache;
+        if (cache != null) {
+          for (final tile in cache.images.entries) {
+            final clip = cache.clips[tile.key];
+            if (clip == null || clip.isEmpty) continue;
+            final xy = tile.key.split('_').map(int.parse).toList();
+            canvas.save();
+            canvas.clipRect(clip);
+            _paintWithShader(
+              canvas,
+              size,
+              pano,
+              shaderProgram!,
+              tile: tile.value,
+              tileX: xy[0],
+              tileY: xy[1],
+            );
+            canvas.restore();
+          }
+        }
       } else {
         _paintWithMeshFallback(canvas, size, pano);
       }
@@ -77,9 +103,12 @@ class SkySpherePainter extends CustomPainter {
   void _paintWithShader(
     Canvas canvas,
     Size size,
-    MellingerPanorama pano,
-    ui.FragmentProgram program,
-  ) {
+    SkyPanorama pano,
+    ui.FragmentProgram program, {
+    ui.Image? tile,
+    int tileX = 0,
+    int tileY = 0,
+  }) {
     final shader = program.fragmentShader();
     var i = 0;
     shader.setFloat(i++, size.width);
@@ -107,9 +136,21 @@ class SkySpherePainter extends CustomPainter {
     shader.setFloat(i++, nightVision ? 1.0 : 0.0);
     shader.setFloat(i++, pano.hemisphereSize.toDouble());
     shader.setFloat(i++, horizonShading ? 1.0 : 0.0);
+    shader.setFloat(i++, tileX.toDouble());
+    shader.setFloat(i++, tileY.toDouble());
+    shader.setFloat(
+      i++,
+      tile == null ? 0 : tileCache!.resolution.columns.toDouble(),
+    );
+    shader.setFloat(
+      i++,
+      tile == null ? 0 : tileCache!.resolution.rows.toDouble(),
+    );
+    shader.setFloat(i++, 2048);
+    shader.setFloat(i++, 1);
 
-    shader.setImageSampler(0, pano.east);
-    shader.setImageSampler(1, pano.west);
+    shader.setImageSampler(0, tile ?? pano.east);
+    shader.setImageSampler(1, tile ?? pano.west);
 
     canvas.drawRect(Offset.zero & size, Paint()..shader = shader);
     shader.dispose();
@@ -117,7 +158,7 @@ class SkySpherePainter extends CustomPainter {
 
   /// Screen-space ray-grid `drawVertices` fallback splitting triangles cleanly between the East
   /// (`u < 0.5`) and West (`u >= 0.5`) hemisphere textures when custom shaders aren't available.
-  void _paintWithMeshFallback(Canvas canvas, Size size, MellingerPanorama pano) {
+  void _paintWithMeshFallback(Canvas canvas, Size size, SkyPanorama pano) {
     const cols = 24;
     const rows = 16;
     final edge = pano.hemisphereSize.toDouble();
@@ -137,10 +178,11 @@ class SkySpherePainter extends CustomPainter {
         final fx = c / cols;
         final nx = fx * 2.0 - 1.0;
         final sx = fx * size.width;
-        final dir = (camera.forwardGal +
-                camera.rightGal * (nx * tanX) +
-                camera.upGal * (ny * tanX))
-            .normalized;
+        final dir =
+            (camera.forwardGal +
+                    camera.rightGal * (nx * tanX) +
+                    camera.upGal * (ny * tanX))
+                .normalized;
         final uv = galacticVecToPanoramaUv(dir);
         final idx = r * (cols + 1) + c;
         gridX[idx] = sx;
@@ -156,7 +198,10 @@ class SkySpherePainter extends CustomPainter {
     final westUv = <double>[];
 
     void emitQuad(int i00, int i10, int i01, int i11) {
-      var u00 = gridU[i00], u10 = gridU[i10], u01 = gridU[i01], u11 = gridU[i11];
+      var u00 = gridU[i00],
+          u10 = gridU[i10],
+          u01 = gridU[i01],
+          u11 = gridU[i11];
       final maxU = [u00, u10, u01, u11].reduce((a, b) => a > b ? a : b);
       final minU = [u00, u10, u01, u11].reduce((a, b) => a < b ? a : b);
       if (maxU - minU > 0.5) {
@@ -177,8 +222,12 @@ class SkySpherePainter extends CustomPainter {
       }
 
       for (final (idx, gu) in [
-        (i00, u00), (i10, u10), (i01, u01),
-        (i10, u10), (i11, u11), (i01, u01),
+        (i00, u00),
+        (i10, u10),
+        (i01, u01),
+        (i10, u10),
+        (i11, u11),
+        (i01, u01),
       ]) {
         posOut.add(gridX[idx]);
         posOut.add(gridY[idx]);
@@ -211,10 +260,26 @@ class SkySpherePainter extends CustomPainter {
         );
       if (nightVision) {
         paint.colorFilter = const ColorFilter.matrix(<double>[
-          0.34, 0.66, 0.12, 0, 0,
-          0.02, 0.04, 0.01, 0, 0,
-          0.01, 0.02, 0.01, 0, 0,
-          0, 0, 0, 1, 0,
+          0.34,
+          0.66,
+          0.12,
+          0,
+          0,
+          0.02,
+          0.04,
+          0.01,
+          0,
+          0,
+          0.01,
+          0.02,
+          0.01,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
         ]);
       }
       canvas.drawVertices(vertices, BlendMode.srcOver, paint);
@@ -230,12 +295,17 @@ class SkySpherePainter extends CustomPainter {
     if (!horizonShading) {
       canvas.drawRect(
         rect,
-        Paint()..color = nightVision ? const Color(0xFF100202) : const Color(0xFF080E1E),
+        Paint()
+          ..color = nightVision
+              ? const Color(0xFF100202)
+              : const Color(0xFF080E1E),
       );
       return;
     }
     final top = nightVision ? const Color(0xFF1A0303) : const Color(0xFF060B19);
-    final bottom = nightVision ? const Color(0xFF0A0101) : const Color(0xFF0E1A30);
+    final bottom = nightVision
+        ? const Color(0xFF0A0101)
+        : const Color(0xFF0E1A30);
     canvas.drawRect(
       rect,
       Paint()
@@ -248,7 +318,9 @@ class SkySpherePainter extends CustomPainter {
   }
 
   void _paintHorizonAndCardinals(Canvas canvas, Size size) {
-    final lineColor = nightVision ? const Color(0x99FF4040) : const Color(0x7770A8FF);
+    final lineColor = nightVision
+        ? const Color(0x99FF4040)
+        : const Color(0x7770A8FF);
     final linePaint = Paint()
       ..color = lineColor
       ..style = PaintingStyle.stroke
@@ -267,7 +339,8 @@ class SkySpherePainter extends CustomPainter {
           pt.dx <= size.width * 1.5 &&
           pt.dy >= -size.height * 0.5 &&
           pt.dy <= size.height * 1.5) {
-        if (!penDown || (prev != null && (pt - prev).distance > maxSpan * 0.6)) {
+        if (!penDown ||
+            (prev != null && (pt - prev).distance > maxSpan * 0.6)) {
           path.moveTo(pt.dx, pt.dy);
           penDown = true;
         } else {
@@ -300,8 +373,12 @@ class SkySpherePainter extends CustomPainter {
       final accent = label == 'N'
           ? (nightVision ? const Color(0xFFFF6E6E) : const Color(0xFFFF8A65))
           : (major
-              ? (nightVision ? const Color(0xFFFF5252) : const Color(0xFFE3EEFF))
-              : (nightVision ? const Color(0xAAFF4444) : const Color(0xAA9BB8E8)));
+                ? (nightVision
+                      ? const Color(0xFFFF5252)
+                      : const Color(0xFFE3EEFF))
+                : (nightVision
+                      ? const Color(0xAAFF4444)
+                      : const Color(0xAA9BB8E8)));
 
       final tp = TextPainter(
         text: TextSpan(
@@ -323,7 +400,9 @@ class SkySpherePainter extends CustomPainter {
   void _paintCenterReticle(Canvas canvas, Size size) {
     final c = Offset(size.width * 0.5, size.height * 0.5);
     final paint = Paint()
-      ..color = (nightVision ? const Color(0x55FF4444) : const Color(0x44FFFFFF))
+      ..color = (nightVision
+          ? const Color(0x55FF4444)
+          : const Color(0x44FFFFFF))
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
     canvas.drawCircle(c, 8, paint);
@@ -333,6 +412,7 @@ class SkySpherePainter extends CustomPainter {
   bool shouldRepaint(covariant SkySpherePainter old) =>
       old.camera != camera ||
       old.panorama != panorama ||
+      old.tileCache != tileCache ||
       old.shaderProgram != shaderProgram ||
       old.sunAltitudeDeg != sunAltitudeDeg ||
       old.showMilkyWay != showMilkyWay ||

@@ -36,8 +36,8 @@ void main() {
     ));
     expect(find.text('DSS2 Color'), findsOneWidget);
     expect(find.text('Default'), findsOneWidget);
-    await tester.tap(find.text('Mellinger Color'));
-    expect(picked, 'skyview_mellinger');
+    await tester.tap(find.text('NASA Deep Star Maps 2020'));
+    expect(picked, 'nasa_starmap_2020');
   });
 
   testWidgets('compare view drag moves the divider', (tester) async {
@@ -230,10 +230,10 @@ void main() {
     final backend = FakeBackend()
       ..json('POST /api/solve', solveJson)
       ..image('POST /api/sky-image', png, {
-        'X-Provider': 'skyview_mellinger',
+        'X-Provider': 'nasa_starmap_2020',
         'X-Credit': 'NASA SkyView',
         'X-Fallback-Used': 'true',
-        'X-Fallback-Message': 'DSS2 is down; showing Mellinger instead.',
+        'X-Fallback-Message': 'DSS2 is down; showing NASA Deep Star Maps 2020 instead.',
       });
     final container = ProviderContainer(overrides: [
       apiClientProvider.overrideWithValue(ApiClient('http://test', dio: fakeDio(backend))),
@@ -255,7 +255,7 @@ void main() {
     expect(find.text('Different image source'), findsOneWidget);
     await tester.tap(find.text('Different image source'));
     await tester.pump();
-    expect(find.text('DSS2 is down; showing Mellinger instead.'), findsOneWidget);
+    expect(find.text('DSS2 is down; showing NASA Deep Star Maps 2020 instead.'), findsOneWidget);
     expect(find.byKey(const Key('compare-slider')), findsOneWidget);
 
     await tester.tap(find.text('My photo'));
@@ -381,7 +381,7 @@ void main() {
     for (final label in ['Webb', 'Hubble', 'DSS2 Color']) {
       expect(find.widgetWithText(ChoiceChip, label), findsOneWidget, reason: label);
     }
-    expect(find.widgetWithText(ChoiceChip, 'Mellinger Color'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'NASA Deep Star Maps 2020'), findsNothing);
     expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Webb')).selected, isTrue);
 
     final dssChip = find.widgetWithText(ChoiceChip, 'DSS2 Color');
@@ -464,7 +464,7 @@ void main() {
     await tester.pumpWidget(UncontrolledProviderScope(
       container: container,
       child: const MaterialApp(
-        home: LandmarkDetailScreen(landmark: hubbleOnlyDso, providerKey: 'skyview_mellinger'),
+        home: LandmarkDetailScreen(landmark: hubbleOnlyDso, providerKey: 'nasa_starmap_2020'),
       ),
     ));
     for (var i = 0; i < 15; i++) {
@@ -473,7 +473,7 @@ void main() {
     }
 
     expect(find.widgetWithText(ChoiceChip, 'Webb'), findsNothing);
-    expect(find.widgetWithText(ChoiceChip, 'Mellinger Color'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'NASA Deep Star Maps 2020'), findsNothing);
     expect(find.widgetWithText(ChoiceChip, 'Hubble'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'DSS2 Color'), findsOneWidget);
     expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Hubble')).selected, isTrue);
@@ -488,7 +488,7 @@ void main() {
     await tester.pumpWidget(UncontrolledProviderScope(
       container: container,
       child: const MaterialApp(
-        home: LandmarkDetailScreen(landmark: star, providerKey: 'skyview_mellinger'),
+        home: LandmarkDetailScreen(landmark: star, providerKey: 'nasa_starmap_2020'),
       ),
     ));
     for (var i = 0; i < 10; i++) {

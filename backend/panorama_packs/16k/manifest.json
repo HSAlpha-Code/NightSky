@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "width": 16384,
+  "height": 8192,
+  "tileSize": 2048,
+  "gutter": 1,
+  "source": "https://svs.gsfc.nasa.gov/vis/a000000/a004800/a004851/starmap_2020_16k_gal.exr",
+  "sourceSha256": "20363595f309da9626111937d6d75555530937914527abbd6d81132764434aa7",
+  "credit": "NASA/Goddard Space Flight Center Scientific Visualization Studio. Gaia DR2: ESA/Gaia/DPAC.",
+  "license": "Public domain; https://svs.gsfc.nasa.gov/help/",
+  "encoding": "WebP lossless RGB8; exact decoded-pixel verification",
+  "conversion": "Native dimensions; linear HDR to sRGB8; values above display white clipped",
+  "tiles": [
+    {
+      "file": "0_0.webp",
+      "bytes": 1630974,
+      "sha256": "d1070162a71dcf023ce933f9e792a373732eaecf26cd3a3d8d8ad9a46ce72d9e"
+    },
+    {
+      "file": "1_0.webp",
+      "bytes": 1705626,
+      "sha256": "70ca1334fac73a440762b376e7b1b3507eff7bef49aaddf2f8e8e9645bd49235"
+    },
+    {
+      "file": "2_0.webp",
+      "bytes": 1824030,
+      "sha256": "9f6f782099b0ace1712e6431a5ad0bc036716cf12fa8def4ffe0ac53b5c03756"
+    },
+    {
+      "file": "3_0.webp",
+      "bytes": 1903264,
+      "sha256": "36262fb552d3e8577d04e5b580042fd948b493cd15c914d43e160c6c4e5aef9f"
+    },
+    {
+      "file": "4_0.webp",
+      "bytes": 1899674,
+      "sha256": "5bdbdfc876df50369c7b30f8bff29972a85c94999bc29e044b3ec7f924915b02"
+    },
+    {
+      "file": "5_0.webp",
+      "bytes": 1812340,
+      "sha256": "8d9c2ae3e5332a92a6426718d8da54c4319ffd53d2f136c0b815d2cf91912b00"
+    },
+    {
+      "file": "6_0.webp",
+      "bytes": 1671004,
+      "sha256": "1b1ec4be964868fb1f9971a1ca31463f2904d35e178c63eb85a362f0db796d6f"
+    },
+    {
+      "file": "7_0.webp",
+      "bytes": 1611354,
+      "sha256": "46460b106ab3e9951bba7b5925ccc3e325ef341d2d79cbf501f7ecff4db5ff5f"
+    },
+    {
+      "file": "0_1.webp",
+      "bytes": 4532996,
+      "sha256": "53733cb9d4c91b3589263200445640eb735d0ef82cfc5afea8981f33b1a65341"
+    },
+    {
+      "file": "1_1.webp",
+      "bytes": 4699570,
+      "sha256": "637ec18c8fda34532ff1abc63749949785514606eab0f8903737372e00697e14"
+    },
+    {
+      "file": "2_1.webp",
+      "bytes": 5039750,
+      "sha256": "c7b83dd721b477ac2c50b530f27b3874cf14d1589b25040c8dc7dc95c330f9dd"
+    },
+    {
+      "file": "3_1.webp",
+      "bytes": 5097992,
+      "sha256": "f349fd43939ad773e9cfec1fd26cba7b2e26a3993e2a00a83ba215ec005835b0"
+    },
+    {
+      "file": "4_1.webp",
+      "bytes": 5153146,
+      "sha256": "f4cc1423d3bfa9b555336eda80354391969279659fc536639d39eb76c09729f5"
+    },
+    {
+      "file": "5_1.webp",
+      "bytes": 4958650,
+      "sha256": "66fd19f8539191e691dd019e0fb107893e70525a17fa420f5a5423c69226b6bd"
+    },
+    {
+      "file": "6_1.webp",
+      "bytes": 4709916,
+      "sha256": "c7c672204706b50c114d34b7952eb092c4ba53140eb35521507174844f5c230a"
+    },
+    {
+      "file": "7_1.webp",
+      "bytes": 4670362,
+      "sha256": "3f6b683dc8287a76d6852cbb62626d0ea8841db0a1fc1374d19884f076146206"
+    },
+    {
+      "file": "0_2.webp",
+      "bytes": 4401724,
+      "sha256": "59555f736365d53a477a56cce2f0d44072035bd66740887cca91056ce5477c7f"
+    },
+    {
+      "file": "1_2.webp",
+      "bytes": 4805530,
+      "sha256": "e7070da9d7ce35aa6b4a5a9048166fecbdae7d9857e9cc135d58ac7fb1f6aaaa"
+    },
+    {
+      "file": "2_2.webp",
+      "bytes": 5057950,
+      "sha256": "b6c5ce1b0785158b43fab877d07f424ee1d1d0ad72536b37cba0631b3d5ed765"
+    },
+    {
+      "file": "3_2.webp",
+      "bytes": 5286442,
+      "sha256": "8a3bd8ebdf34dab6bd70ae2e197cd672d376b0557a2cdbc5ba64d3abde61ccde"
+    },
+    {
+      "file": "4_2.webp",
+      "bytes": 5332824,
+      "sha256": "1f5598b647018566a4d398c7889cce222f69e9c451956d3d10a000511dc304f9"
+    },
+    {
+      "file": "5_2.webp",
+      "bytes": 5137650,
+      "sha256": "0fd94be16cdd05d09245fc082b7303d3b2fa1dbd63ef814561dbd2933318bb4f"
+    },
+    {
+      "file": "6_2.webp",
+      "bytes": 4909448,
+      "sha256": "e01357296ebef2713bd72001cf588c6ea482b236ef6d42b976ee6cd41c27f277"
+    },
+    {
+      "file": "7_2.webp",
+      "bytes": 4569958,
+      "sha256": "d5eb6a5fecc08f7ccd5eee03748b49baf4a03ee83b9e6f4e5422daeba449e5bd"
+    },
+    {
+      "file": "0_3.webp",
+      "bytes": 1709128,
+      "sha256": "b5a7b5e7352e11d5e573ac055db0911dcffa9a1b8fdee15c7c618f0acd249b4f"
+    },
+    {
+      "file": "1_3.webp",
+      "bytes": 1772476,
+      "sha256": "329281803950e006c5ad6921536315acfd56b0bfd828d430806caae79dbd2c60"
+    },
+    {
+      "file": "2_3.webp",
+      "bytes": 1920024,
+      "sha256": "007220b6889e4dea5a8151f7e382f6f63f54c35b2f4b6302a66ce418838c587b"
+    },
+    {
+      "file": "3_3.webp",
+      "bytes": 2055398,
+      "sha256": "5a360d119f5bb8c5eba44c68be7b497fb585a0007654f79f62c12987184355fd"
+    },
+    {
+      "file": "4_3.webp",
+      "bytes": 2059732,
+      "sha256": "e5ba64ce5a06074a6443d301b4a323e9e47468e1b9dfa209ebbbb4c3458f9f22"
+    },
+    {
+      "file": "5_3.webp",
+      "bytes": 1954980,
+      "sha256": "d599d3754b23bb93986b53532f90313f78002d1cf294eaf81682eaeb62debe5a"
+    },
+    {
+      "file": "6_3.webp",
+      "bytes": 1815586,
+      "sha256": "14b46e4305ee6d6898b0455603c767235f3e692351c4b0edf0f80822ae11af2b"
+    },
+    {
+      "file": "7_3.webp",
+      "bytes": 1712172,
+      "sha256": "78fc69083aa1ff7ae8083e7755cd354bc6c77df5049a188b7d01a6e2a39ef138"
+    }
+  ],
+  "sourceBytes": 384152397
+}

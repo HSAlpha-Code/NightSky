@@ -5,6 +5,7 @@ import '../api_client.dart';
 import '../models.dart';
 import '../sensors.dart';
 import '../settings.dart';
+import '../sky_view/panorama_downloads.dart';
 import '../state.dart';
 import '../upload_consent.dart';
 import 'legal_screen.dart';
@@ -148,6 +149,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           value: s.nightVision,
           onChanged: (v) => notifier.update((s) => s.copyWith(nightVision: v)),
         ),
+        const SizedBox(height: 8),
+        const PanoramaDownloads(),
         const SizedBox(height: 8),
         const _SectionHeader('Display'),
         _ChoiceSetting<ScreenOrientationMode>(

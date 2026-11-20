@@ -106,9 +106,11 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
-        EventChannel(messenger, "night_sky/sensor_events").setStreamHandler(
-            SensorStreamHandler(sensorManager, displayManager, ::currentDisplayRotationDeg)
-        )
+        for (channel in listOf("night_sky/sensor_events", "night_sky/gyro_events")) {
+            EventChannel(messenger, channel).setStreamHandler(
+                SensorStreamHandler(sensorManager, displayManager, ::currentDisplayRotationDeg)
+            )
+        }
 
         MethodChannel(messenger, "night_sky/settings").setMethodCallHandler { call, result ->
             val prefs = getSharedPreferences("night_sky", Context.MODE_PRIVATE)
